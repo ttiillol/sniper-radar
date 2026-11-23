@@ -26,6 +26,15 @@ MAX_SLIPPAGE = 0.02                 # 2%, estimated with x*y=k
 FEE_PCT = 0.01                      # assume ~1% total fees per side (pool + priority)
 
 # --- exits --------------------------------------------------------------------
+# Live exit profile "E: hybrid ladder" (chosen 2026-11-23 after the bot survey + simulation):
+#   before +50%: stop -30%; once it has been +25%, sell everything on a 12% pullback (locks small wins)
+#   +50%: sell 1/3, the rest can no longer lose (floor = entry +2%); from +80% trail 25% from the peak
+#   +150%: sell another 1/3
+#   last 1/3 = moonbag: no ceiling, sold on a 35% drop from its peak (or after 24h)
+EXIT_PROFILE = {"sl": -0.30, "arm0": 0.25, "trail0": 0.12,
+                "tps": [(0.5, 1 / 3), (1.5, 1 / 3)], "be": 0.02, "arm1": 0.8, "trail1": 0.25,
+                "arm": 1.5, "trail": 0.35, "stale_min": None, "max_min": 1440}
+# legacy single-rule exits (profile A, kept for comparison only)
 STOP_LOSS = -0.06
 TAKE_PROFIT_1 = 0.25                # sell half at +25%
 TRAIL_ARM = 0.15                    # trailing stop arms at +15%

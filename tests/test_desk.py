@@ -191,15 +191,35 @@ def test_stop_loss_and_gap_fill_is_honest():
     assert frac == 1.0 and "損切り" in why and "-33" in why
 
 
-def test_take_profit_half_then_trailing():
+def test_ladder_then_breakeven_floor():
     p = pos()
-    assert A.exit_decision(p, 1.30, 80_000, NOW)[0] == 0.5
-    assert A.exit_decision(p, 1.40, 80_000, NOW)[0] == 0
-    assert A.exit_decision(p, 1.40 * 0.87, 80_000, NOW)[0] == 1.0
+    frac, why = A.exit_decision(p, 1.55, 80_000, NOW + 60)
+    assert frac == pytest.approx(1 / 3) and "利益確定" in why and "引き上げ" in why, why
+    assert A.exit_decision(p, 1.20, 80_000, NOW + 120)[0] == 0, "above the break-even floor -> hold"
+    frac, why = A.exit_decision(p, 0.99, 80_000, NOW + 180)
+    assert frac == 1.0 and "建値" in why, why
 
 
-def test_time_stop():
-    assert A.exit_decision(pos(), 1.0, 80_000, NOW + C.MAX_HOLD_MIN * 60)[0] == 1.0
+def test_stale_exit_option_and_moonbag():
+    from desk.exits import step
+    prof = dict(C.EXIT_PROFILE, stale_min=90)
+    st = {"entry": 1.0, "peak": 1.0, "opened": NOW}
+    assert step(st, 1.05, NOW + 91 * 60, prof)[0] == 0, "above entry: keep waiting"
+    frac, why = step(st, 0.98, NOW + 92 * 60, prof)
+    assert frac == 1.0 and "撤退" in why
+    m = pos()                                            # moonbag keeps running far past +400%
+    for t, px in enumerate([1.6, 2.6, 5.0, 9.0, 12.0], 1):
+        A.exit_decision(m, px, 80_000, NOW + t * 60)
+    assert m["sold"] == pytest.approx(2 / 3), "last third still held at 12x"
+    frac, why = A.exit_decision(m, 12.0 * 0.64, 80_000, NOW + 600)
+    assert frac == 1.0 and "トレーリング" in why
+
+
+def test_small_win_locked_before_first_take_profit():
+    p = pos()
+    assert A.exit_decision(p, 1.30, 80_000, NOW + 60)[0] == 0
+    frac, why = A.exit_decision(p, 1.30 * 0.87, 80_000, NOW + 120)   # 13% off a +30% peak
+    assert frac == 1.0 and "トレーリング" in why and "+13" in why, why
 
 
 # ------------------------------------------------------------------ desk loop
@@ -326,11 +346,10 @@ def test_wallet_groups_found():
 def test_simulate_uses_desk_exit_rules():
     from desk import tracker as T
     t0 = NOW
-    stop = [[t0, 1.0], [t0 + 300, 0.97], [t0 + 600, 0.90], [t0 + 900, 2.0]]
-    assert T.simulate(stop) == pytest.approx(-0.10 - T.FRICTION), "stopped out, later pump ignored"
-    tp = [[t0, 1.0], [t0 + 300, 1.30], [t0 + 600, 1.50], [t0 + 900, 1.30]]
-    r = T.simulate(tp)
-    assert r == pytest.approx(0.5 * 0.30 + 0.5 * 0.30 - T.FRICTION), "half at +30%, rest on trailing stop"
+    stop = [[t0, 1.0], [t0 + 300, 0.97], [t0 + 600, 0.65], [t0 + 900, 2.0]]
+    assert T.simulate(stop) == pytest.approx(-0.35 - T.FRICTION), "stopped out, later pump ignored"
+    lad = [[t0, 1.0], [t0 + 300, 1.6], [t0 + 600, 3.0], [t0 + 900, 2.0]]
+    assert T.simulate(lad) == pytest.approx(0.6 / 3 + 2.0 / 3 + 1.0 / 3 - T.FRICTION)
 
 
 def test_tracker_lifecycle_and_summary():
@@ -338,7 +357,7 @@ def test_tracker_lifecycle_and_summary():
     s = P.new_state()
     T.start(s, "M1", "A", 1.0, 12_000, "REJECT", ["流動性 $8,000（$10,000未満）"], None, NOW)
     T.start(s, "M2", "B", 1.0, 40_000, "BUY", [], 70, NOW)
-    for i in range(1, 50):
+    for i in range(1, 80):
         now = NOW + i * 300
         T.update(s, {m: (1 + 0.02 * i if m == "M1" else 1 - 0.01 * i) for m in T.due(s, now)}, now)
     assert not s["tracking"] and len(s["outcomes"]) == 2
@@ -411,7 +430,7 @@ def test_buy_and_stop_send_notifications(monkeypatch):
     monkeypatch.setattr(M, "load_radar", lambda: {"bots": set(), "tokens": {}})
     d.cycle(NOW)
     assert any(t.startswith("🟢 BUY") for t in sent)
-    prices["p"] = 0.0009                                   # -10% -> stop
+    prices["p"] = 0.0006                                   # -40% -> stop (live profile stops at -30%)
     d.cycle(NOW + 60)
     assert any(t.startswith("🔴 STOP") for t in sent)
     assert "残高" in d.summary_text()
@@ -458,9 +477,12 @@ def test_snipers_and_bundles_still_holding():
 def test_exit_profiles_differ_on_same_path():
     from desk import tracker as T
     t0 = NOW
-    # dips -10% (A stops out), then runs to 3x
+    # dips -10% (old -6% rule stops out), then runs to 3x
     path = [[t0, 1.0], [t0 + 300, 0.90], [t0 + 600, 1.5], [t0 + 900, 3.0], [t0 + 1200, 2.0]]
-    a = T.simulate_profile(path, T.PROFILES["A_今のルール(-6%)"])
+    a = T.simulate_profile(path, T.PROFILES["A_旧ルール(-6%)"])
     b = T.simulate_profile(path, T.PROFILES["B_業界標準(-35%,2倍で半分)"])
-    assert a < 0 < b, (a, b)
-    assert a == pytest.approx(T.simulate(path)), "profile A matches the live exit rules"
+    e = T.simulate_profile(path, T.PROFILES["E_ハイブリッド(採用中)"])
+    assert a < 0 < b and e > 0, (a, b, e)
+    assert e == pytest.approx(T.simulate(path)), "E is the live profile"
+
+

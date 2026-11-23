@@ -13,22 +13,23 @@ import time
 
 from . import config as C
 
-TRACK_HOURS = 4
+TRACK_HOURS = 6                 # long enough for the 24h moonbag to matter a bit
 SAMPLE_SEC = 300
 MAX_TRACKED = 400
 MAX_OUTCOMES = 3000
 FRICTION = 2 * C.FEE_PCT + 0.01          # fees both ways + ~1% slippage
 
 # Exit profiles compared on every tracked coin (same price path, different selling rules).
-#  A: the desk's current rules (design doc: stop -6%)
-#  B: common terminal/bot advice: stop -35%, sell 50% at 2x, 25% at 5x, trail the rest 25% from the peak
-#  C: open-source pumpbot style: stop -35%, thirds at +50% / +150% / +400%, trail 12% after +25%
 PROFILES = {
-    "A_今のルール(-6%)": {"sl": -0.06, "tps": [(0.25, 0.5)], "arm": 0.15, "trail": 0.12, "max_min": 240},
-    "B_業界標準(-35%,2倍で半分)": {"sl": -0.35, "tps": [(1.0, 0.5), (4.0, 0.25)], "arm": 1.0, "trail": 0.25,
-                                 "max_min": 240},
-    "C_段階利確(+50/150/400%)": {"sl": -0.35, "tps": [(0.5, 1 / 3), (1.5, 1 / 3), (4.0, 1 / 3)], "arm": 0.25,
-                                "trail": 0.12, "max_min": 240},
+    "A_旧ルール(-6%)": {"sl": -0.06, "tps": [(0.25, 0.5)], "be": None, "arm": 0.15, "trail": 0.12,
+                       "stale_min": None, "max_min": 240},
+    "B_業界標準(-35%,2倍で半分)": {"sl": -0.35, "tps": [(1.0, 0.5), (4.0, 0.25)], "be": None, "arm": 1.0,
+                                 "trail": 0.25, "stale_min": None, "max_min": 240},
+    "C_段階利確(+50/150/400%)": {"sl": -0.35, "tps": [(0.5, 1 / 3), (1.5, 1 / 3), (4.0, 1 / 3)], "be": None,
+                                "arm": 0.25, "trail": 0.12, "stale_min": None, "max_min": 240},
+    "D_守り(+50%後は負けなし)": {"sl": -0.30, "tps": [(0.5, 1 / 3), (1.5, 1 / 3)], "be": 0.02, "arm": 1.5,
+                              "trail": 0.35, "stale_min": 90, "max_min": 1440},
+    "E_ハイブリッド(採用中)": C.EXIT_PROFILE,
 }
 FEATURES = ("holders", "sniper_hold_pct", "bundle_hold_pct", "insider_pct", "top3_pct", "top10_pct",
             "creator_prev", "creator_dead", "dev_pct", "liq")
@@ -83,51 +84,13 @@ def update(state, prices, now=None):
 
 
 def simulate_profile(path, prof):
-    """Replay one exit profile on a price path. Returns net return (fraction of the stake)."""
-    if not path or len(path) < 2:
-        return None
-    entry, t0 = path[0][1], path[0][0]
-    left, realized, peak, done = 1.0, 0.0, entry, set()
-    for ts, p in path[1:]:
-        g = p / entry - 1
-        peak = max(peak, p)
-        if g <= prof["sl"]:
-            realized += left * g; left = 0; break               # honest: filled at the real (gapped) price
-        for i, (lvl, frac) in enumerate(prof["tps"]):
-            if i not in done and g >= lvl:
-                done.add(i)
-                sold = min(frac, left)
-                realized += sold * g; left -= sold
-        if left <= 1e-9:
-            break
-        if peak / entry - 1 >= prof["arm"] and p <= peak * (1 - prof["trail"]):
-            realized += left * g; left = 0; break
-        if (ts - t0) / 60 >= prof["max_min"]:
-            realized += left * g; left = 0; break
-    if left > 1e-9:
-        realized += left * (path[-1][1] / entry - 1)
-    return realized - FRICTION
+    from .exits import replay
+    return replay(path, prof, FRICTION)
 
 
 def simulate(path, entry=None):
-    """Desk's own exit rules (profile A, via the real exit_decision for exactness)."""
-    from .agents import exit_decision
-    if not path:
-        return None
-    entry = entry or path[0][1]
-    pos = {"entry": entry, "peak": entry, "opened": path[0][0], "half_sold": False}
-    realized, left = 0.0, 1.0
-    for ts, p in path[1:]:
-        frac, _ = exit_decision(pos, p, None, ts)
-        if frac:
-            sold = left * frac if frac < 1 else left
-            realized += sold * (p / entry - 1)
-            left -= sold
-            if left <= 1e-9:
-                break
-    if left > 1e-9:
-        realized += left * (path[-1][1] / entry - 1)
-    return realized - FRICTION
+    """The desk's live exit rules (C.EXIT_PROFILE) replayed on a price path."""
+    return simulate_profile(path, C.EXIT_PROFILE)
 
 
 def finish(state, mint):

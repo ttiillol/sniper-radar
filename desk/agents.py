@@ -325,22 +325,18 @@ def risk(state, pair, now=None):
 
 # ============================================================ 6. Exit
 def exit_decision(pos, price, liq, now=None):
-    """Returns (fraction_to_sell, reason) or (0, None)."""
+    """Returns (fraction_of_CURRENT_position_to_sell, reason) or (0, None). Uses C.EXIT_PROFILE."""
+    from .exits import step
     now = now or time.time()
-    chg = price / pos["entry"] - 1
-    pos["peak"] = max(pos["peak"], price)
-    if chg <= C.STOP_LOSS:
-        return 1.0, f"損切り（{chg*100:+.1f}%）"
+    before = pos.get("sold", 0.0)
     if liq is not None and liq < 5000:
+        pos["sold"] = 1.0
         return 1.0, f"流動性が急減（${liq:,.0f}）"
-    if not pos["half_sold"] and chg >= C.TAKE_PROFIT_1:
-        pos["half_sold"] = True
-        return 0.5, f"利益確定で半分売却（{chg*100:+.1f}%）"
-    if pos["peak"] / pos["entry"] - 1 >= C.TRAIL_ARM and price <= pos["peak"] * (1 - C.TRAIL_DIST):
-        return 1.0, f"トレーリングストップ（高値から-{C.TRAIL_DIST*100:.0f}%、損益{chg*100:+.1f}%）"
-    if (now - pos["opened"]) / 60 >= C.MAX_HOLD_MIN:
-        return 1.0, f"保有時間の上限（{C.MAX_HOLD_MIN//60}時間、損益{chg*100:+.1f}%）"
-    return 0, None
+    frac_init, why = step(pos, price, now, C.EXIT_PROFILE)
+    if not frac_init:
+        return 0, None
+    left_before = 1.0 - before
+    return (1.0 if pos["sold"] >= 1 - 1e-9 else min(1.0, frac_init / left_before)), why
 
 
 # ============================================================ 8. Desk Manager
