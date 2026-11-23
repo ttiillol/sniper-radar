@@ -23,6 +23,7 @@ from . import notify as N
 from . import live as L
 from . import journal as J
 from . import flow as F
+from . import selfcheck as SC
 import scanner
 
 
@@ -456,12 +457,26 @@ async def run_loop(minutes):
         if n:
             L.step("new", f"GeckoTerminalの注目ランキングから{n}件を審査待ちに追加")
 
+    def check_sources():
+        r = SC.run()
+        desk.s["selfcheck"] = r
+        bad = [k for k, v in r["results"].items() if not v["ok"]]
+        N.send_async("データ窓口チェック  " + ("全部OK" if not bad else f"NG {len(bad)}件"), SC.text(r), click=dash())
+        L.step("check" if not bad else "error", "データ窓口の自己点検: " + ("全部OK" if not bad else "NG " + "・".join(bad)))
+
     async def ticker():
         last_fill = time.time()
         last_sum = time.time()
         last_scout = 0
+        last_check = time.time() - 6 * 3600 + 60          # first self check one minute after start
         while time.time() < until:
             day_report()
+            if C.FLOW_ON and time.time() - last_check > 6 * 3600:
+                last_check = time.time()
+                try:
+                    await asyncio.to_thread(check_sources)
+                except Exception as e:
+                    desk._error("selfcheck", "", e)
             if C.FLOW_ON and time.time() - last_scout > C.TRENDING_EVERY_SEC:
                 last_scout = time.time()
                 try:

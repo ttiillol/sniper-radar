@@ -686,3 +686,60 @@ def test_low_score_coin_is_rejected_not_an_error(monkeypatch):
     monkeypatch.setattr(M, "load_radar", lambda: {"bots": set(), "tokens": {}})
     d.cycle(NOW)
     assert s["candidates"]["M"]["status"] == "rejected" and s["stats"].get("errors", 0) == 0
+
+
+# ------------------------------------------------------------------ real response shapes (captured 2026-11-23 from the live APIs)
+GT_TRADES = {"data": [
+    {"id": "x1", "type": "trade", "attributes": {"block_number": 1, "block_timestamp": "2026-11-23T21:27:29Z",
+     "tx_hash": "h1", "tx_from_address": "7Yyq8Wmiw8ovTS5kTEusmJzri1SZ31fZ6rSfeqWqdVK8", "kind": "sell",
+     "volume_in_usd": "100.0583658897431685636330978887168607042492752649252939537267904602552", "is_anomalous": False}},
+    {"id": "x2", "type": "trade", "attributes": {"block_number": 1, "block_timestamp": "2026-11-23T21:27:29Z",
+     "tx_hash": "h2", "tx_from_address": "55823rbXDfAuqUUHNEc9zHf7fuZ3rFuR3a7uPqR1KAiv", "kind": "buy",
+     "volume_in_usd": "7.21381845140905961079608053233841778783865665007072805103618454", "is_anomalous": False}}]}
+GT_TRENDING = {"data": [
+    {"id": "p1", "attributes": {"name": "FIONA / SOL", "address": "DjbLtX1HRGZZrJgJ7CwTX6SN3D7tBLiytkGwomBUwTVB"},
+     "relationships": {"dex": {"data": {"id": "pumpswap"}},
+                       "base_token": {"data": {"id": "solana_B34nXKzCgsJb9ChLuSHPRpXLE3WFSWyeT8Cqkzzmpump"}}}},
+    {"id": "p2", "attributes": {"name": "PEPE / SOL", "address": "HDoj"},
+     "relationships": {"dex": {"data": {"id": "meteora"}},
+                       "base_token": {"data": {"id": "solana_PEPEqnuuCDbBC89p1u9vpnP1KQ2oj1xTcQBsjt9X55m"}}}}]}
+JUP_QUOTE = {"inputMint": "B34n", "inAmount": "1000000000", "outputMint": "So11111111111111111111111111111111111111112",
+             "outAmount": "34856016", "swapMode": "ExactIn", "slippageBps": 300,
+             "priceImpactPct": "0.0081375400943202930239781645",      # a FRACTION incl. fees (0.81%)
+             "routePlan": [{"swapInfo": {"label": "Meteora DLMM"}}]}
+
+
+def test_real_shapes_geckoterminal(monkeypatch):
+    from desk import flow as F
+    monkeypatch.setattr(F, "_last_call", {"t": 0.0})
+    monkeypatch.setattr(F.S, "get_json", lambda url, **k: GT_TRENDING if "trending" in url else GT_TRADES)
+    tr = F.pool_trades("DjbLtX1HRGZZrJgJ7CwTX6SN3D7tBLiytkGwomBUwTVB")
+    assert [x["kind"] for x in tr] == ["sell", "buy"] and round(tr[1]["usd"], 2) == 7.21
+    assert tr[0]["wallet"] == "7Yyq8Wmiw8ovTS5kTEusmJzri1SZ31fZ6rSfeqWqdVK8" and tr[0]["t"] == 1795469249
+    tm = F.trending_mints()
+    assert tm == [{"mint": "B34nXKzCgsJb9ChLuSHPRpXLE3WFSWyeT8Cqkzzmpump", "rank": 1, "symbol": "FIONA"}]
+
+
+def test_real_shapes_jupiter_sell_check(monkeypatch):
+    from desk import flow as F
+    monkeypatch.setattr(F.S, "dex_pairs", lambda ms: {ms[0]: {"priceUsd": "0.0049"}})
+    monkeypatch.setattr(F.S, "get_json", lambda url, **k: JUP_QUOTE)
+    assert F.sell_check("B34n", 10)["ok"] is True
+    monkeypatch.setattr(F.S, "get_json", lambda url, **k: dict(JUP_QUOTE, priceImpactPct="0.083"))
+    assert F.sell_check("B34n", 10)["ok"] is False
+    monkeypatch.setattr(F.S, "get_json", lambda url, **k: {"error": "No routes found", "errorCode": "COULD_NOT_FIND_ANY_ROUTE"})
+    assert F.sell_check("B34n", 10)["ok"] is False                    # no route -> honeypot suspicion
+    monkeypatch.setattr(F.S, "get_json", lambda url, **k: None)
+    assert F.sell_check("B34n", 10)["ok"] is None                     # API down -> not a fail
+
+
+def test_selfcheck_report(monkeypatch):
+    from desk import flow as F
+    from desk import selfcheck as SC
+    monkeypatch.setattr(F, "_last_call", {"t": 0.0})
+    monkeypatch.setattr(F.S, "get_json", lambda url, **k: GT_TRENDING if "trending" in url else GT_TRADES if "trades" in url else JUP_QUOTE)
+    monkeypatch.setattr(SC.S, "dex_pairs", lambda ms: {ms[0]: {"pairAddress": "P", "priceUsd": "0.0049", "liquidity": {"usd": 52000}}})
+    monkeypatch.setattr(SC.S, "rugcheck", lambda m: {"score": 1})
+    r = SC.run()
+    assert r["coin"] == "FIONA" and all(v["ok"] for v in r["results"].values())
+    assert "OK  Jupiter売却テスト" in SC.text(r)

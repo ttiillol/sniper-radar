@@ -33,7 +33,7 @@ def build(site: Path):
             1 for c in s["candidates"].values() if c.get("status") == "waiting"),
         "verify": T.summarize(s.get("outcomes", [])), "tracking": len(s.get("tracking", {})),
         "outcomes_n": len(s.get("outcomes", [])),
-        "journal": jstats, "jtrades": jtr, "bvl": bvl, "risk_pct": J.RISK_PCT,
+        "selfcheck": s.get("selfcheck"), "journal": jstats, "jtrades": jtr, "bvl": bvl, "risk_pct": J.RISK_PCT,
         "limits": {"daily": C.DAILY_LOSS_LIMIT, "total": C.TOTAL_LOSS_LIMIT, "max": C.MAX_OPEN_POSITIONS,
                    "start": C.START_CASH},
     }
@@ -171,6 +171,7 @@ $("#hc").innerHTML=`<h2>デスクの調子</h2><div class="small" style="line-he
 卒業コインの受信 ${st.migrations||0} ・ 補充 ${st.backfilled||0} ・ 審査 ${st.evaluated||0}<br>
 無料で除外：${pf}<br>
 エラー ${st.errors||0} 件 ・ データ窓口 ${D.rpc==="helius"?"Helius（専用）":"公共（混みやすい）"} ・ 今月 ${(D.credits||0).toLocaleString()} クレジット
+${D.selfcheck?"<br>データ窓口の自己点検（"+ago(D.selfcheck.ts)+"・"+String(D.selfcheck.coin||"").replace(/</g,"")+"で試験）："+Object.entries(D.selfcheck.results).map(([k,v])=>`<span class="${v.ok?"pos":"neg"}">${v.ok?"OK":"NG"}</span> ${k}`).join(" ・ "):""}
 ${Object.keys(D.samples).length?"<br>エラー例："+Object.values(D.samples).map(x=>String(x).replace(/</g,"")).join(" ／ "):""}</div>`})();
 const R=Object.entries(D.stats.rejected||{}).sort((a,b)=>b[1]-a[1]).slice(0,10);
 $("#rej").innerHTML=R.length?R.map(([k,v])=>`<div class="row" style="display:flex;justify-content:space-between"><span>${k.replace(/</g,"")}</span><b>${v}</b></div>`).join(""):'<div class="small">まだありません</div>';
