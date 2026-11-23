@@ -61,6 +61,7 @@ button{margin-top:8px;width:100%;padding:12px;border:0;border-radius:10px;backgr
 .tag{font-size:11px;padding:2px 7px;border-radius:99px;white-space:nowrap}.t-red{background:#3a1416;color:var(--red)}.t-org{background:#3a2810;color:var(--org)}.t-pur{background:#2a1d3d;color:#c49bff}
 .grow{flex:1;min-width:0}.small{font-size:11.5px;color:var(--mut)}.num{font-weight:700;font-size:16px;min-width:34px;text-align:right}
 .copy{background:none;border:1px solid var(--line);color:var(--mut);width:auto;margin:0;padding:4px 8px;font-size:11px;font-weight:400}
+.hrow{display:flex;justify-content:space-between;font-size:13px;padding:3px 0}.ok{color:var(--grn)}.warn{color:var(--org)}.bad{color:var(--red)}
 .help{font-size:12.5px;color:var(--mut)}.help b{color:var(--tx)}
 </style></head><body>
 <h1>🎯 狙撃ボット・レーダー</h1>
@@ -72,12 +73,15 @@ button{margin-top:8px;width:100%;padding:12px;border:0;border-radius:10px;backgr
 <div class="stat"><b id="sBot">-</b><span>ボット濃厚</span></div>
 </div></div>
 
+<div class="card" id="health"></div>
+
 <div class="card"><h2>🔎 この財布、真似して大丈夫？</h2>
 <input id="q" placeholder="財布アドレスを貼り付け" autocomplete="off" autocapitalize="off" spellcheck="false">
 <button id="go">チェック</button><div id="res"></div></div>
 
 <div class="card">
 <div class="tabs"><div class="tab on" data-t="w">要注意の財布</div><div class="tab" data-t="t">最近のコイン</div></div>
+<button id="bulk" style="margin:0 0 10px">🚫 ボット濃厚の財布をまとめてコピー</button>
 <div id="list"></div></div>
 
 <div class="card help"><h2>見方</h2>
@@ -98,6 +102,20 @@ $("#sTok").textContent=(D.meta.tokens_total||0).toLocaleString();
 $("#sWal").textContent=D.walletsTotal.toLocaleString();
 $("#sBot").textContent=D.ranked.filter(r=>r[1]>=5).length;
 
+const RS={rate_limited:"窓口が混雑",timeout:"応答が遅い",network:"通信エラー",server_error:"窓口の障害",too_busy:"取引が多すぎ",not_indexed_yet:"記録がまだ無い",rpc_error:"問い合わせエラー",bad_response:"応答が変",auth:"APIキーのエラー",budget:"無料枠の上限",monthly_budget_reached:"今月の無料枠を使い切り",out_of_time:"時間切れ",unexpected:"想定外のエラー",other:"その他"};
+(function(){const s=D.meta.last_stats;if(!s){$("#health").style.display="none";return}
+  const tried=s.checked+s.skipped, pct=tried?Math.round(s.checked/tried*100):0, cls=pct>=90?"ok":pct>=70?"warn":"bad";
+  const rs=Object.entries(s.reasons||{}).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`${RS[k]||k} ${v}`).join("・")||"なし";
+  const mk=new Date().toISOString().slice(0,7), cr=(D.meta.credits||{})[mk];
+  $("#health").innerHTML=`<h2>🩺 直近の実行の調子</h2>
+  <div class="hrow"><span>見つけた新コイン</span><b>${s.seen}</b></div>
+  <div class="hrow"><span>調べきれた割合</span><b class="${cls}">${pct}%（${s.checked}/${tried}）</b></div>
+  <div class="hrow"><span>再挑戦した数</span><b>${s.retried||0}</b></div>
+  <div class="hrow"><span>失敗の理由</span><span class="small">${rs}</span></div>
+  <div class="hrow"><span>データ窓口</span><b>${s.rpc==="helius"?"Helius（専用）":"公共（無料・混みやすい）"}</b></div>
+  ${cr!=null?`<div class="hrow"><span>今月の使用クレジット</span><b>${cr.toLocaleString()} / 1,000,000</b></div>`:""}`;
+})();
+const TT=Math.max(D.meta.tokens_total||1,1);
 function check(){
   const a=$("#q").value.trim();if(!a){return}
   const h=D.all[a];let v;
@@ -113,7 +131,7 @@ function wList(){
   if(!D.ranked.length) return '<div class="small">まだデータがありません。何回か実行されると溜まっていきます。</div>';
   return D.ranked.slice(0,150).map(([a,c,b,l,r])=>{const[t,n]=level(c);
     return `<div class="row"><div class="num">${c}</div><div class="grow">${link(a)} <span class="tag ${t}">${n}</span>${b>=2?' <span class="tag t-pur">同ブロック常連</span>':''}
-    <div class="small">最近：${r.slice(0,4).join("・")} ／ ${ago(l)}</div></div><button class="copy" data-a="${a}">コピー</button></div>`}).join("");
+    <div class="small">出現率 ${(c/TT*100).toFixed(1)}% ・ 最近：${r.slice(0,3).join("・")} ／ ${ago(l)}</div></div><button class="copy" data-a="${a}">コピー</button></div>`}).join("");
 }
 function tList(){
   if(!D.tokens.length) return '<div class="small">まだデータがありません。</div>';
@@ -125,6 +143,9 @@ function tList(){
 let tab="w";const draw=()=>{$("#list").innerHTML=tab==="w"?wList():tList()};
 document.querySelectorAll(".tab").forEach(el=>el.onclick=()=>{document.querySelectorAll(".tab").forEach(x=>x.classList.remove("on"));el.classList.add("on");tab=el.dataset.t;draw()});
 $("#list").addEventListener("click",e=>{const b=e.target.closest(".copy");if(!b)return;navigator.clipboard?.writeText(b.dataset.a).then(()=>{b.textContent="✓"}).catch(()=>{$("#q").value=b.dataset.a;check();scrollTo(0,0)})});
+$("#bulk").onclick=()=>{const list=D.ranked.filter(r=>r[1]>=5).map(r=>r[0]);const b=$("#bulk");
+  if(!list.length){b.textContent="まだボット濃厚の財布はありません";return}
+  navigator.clipboard?.writeText(list.join("\n")).then(()=>{b.textContent=`✓ ${list.length}個コピーしました`}).catch(()=>{b.textContent="コピーできませんでした"})};
 draw();
 </script></body></html>
 """

@@ -6,7 +6,7 @@ on:
   workflow_dispatch:          # "Run workflow" button for manual runs
   push:
     branches: [main]
-    paths: [".github/workflows/scan.yml", "scanner.py"]   # run right after the program is updated
+    paths: [".github/workflows/scan.yml", "scanner.py", "build_page.py"]   # run right after the program is updated
 
 permissions:
   contents: write
@@ -20,18 +20,20 @@ concurrency:
 jobs:
   scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 58
     environment:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - run: pip install -r requirements.txt
       - name: Collect early buyers
-        run: python scanner.py --minutes 20 --max-tokens 120
+        run: python scanner.py --minutes 40 --max-tokens 150
         env:
           RPC_URL: ${{ secrets.RPC_URL }}
       - name: Build phone page
@@ -42,7 +44,7 @@ jobs:
           git config user.email "actions@users.noreply.github.com"
           git add data
           git diff --cached --quiet || git commit -m "data update"
-          git push
+          for i in 1 2 3; do git pull --rebase -X theirs origin main && git push && break; sleep 5; done
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
