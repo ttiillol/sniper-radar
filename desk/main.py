@@ -21,17 +21,21 @@ from . import sources as S
 import scanner
 
 
+_radar_cache = {"t": 0, "v": None}
+
+
 def load_radar():
-    """Sniper-radar output from the same repo."""
-    def rd(name, default):
+    """Sniper-radar output (rebuilt from run logs; cached 10 min)."""
+    if _radar_cache["v"] is None or time.time() - _radar_cache["t"] > 600:
         try:
-            return json.loads((C.DATA / name).read_text())
+            wallets, tokens, _ = scanner.rebuild(C.DATA)
         except Exception:
-            return default
-    wallets = rd("wallets.json", {})
-    tokens = rd("tokens.json", [])
-    return {"bots": {w for w, v in wallets.items() if v.get("count", 0) >= 5},
-            "tokens": {t["mint"]: t for t in tokens}}
+            wallets, tokens = {}, []
+        _radar_cache.update(t=time.time(), v={
+            "bots": {w for w, v in wallets.items() if v.get("count", 0) >= 5},
+            "tokens": {t["mint"]: t for t in tokens}})
+    v = _radar_cache["v"]
+    return {"bots": set(v["bots"]), "tokens": dict(v["tokens"])}
 
 
 def credits_ok(state):
@@ -40,7 +44,7 @@ def credits_ok(state):
         return True
     mk = scanner.month_key()
     try:
-        radar_used = json.loads((C.DATA / "meta.json").read_text()).get("credits", {}).get(mk, 0)
+        radar_used = scanner.radar_credits(mk, C.DATA)
     except Exception:
         radar_used = 0
     return radar_used + state["credits"].get(mk, 0) + scanner.CALLS["n"] < scanner.MONTHLY_BUDGET
@@ -73,12 +77,19 @@ class Desk:
             return
         pairs = self.fetch_pairs(list(self.s["positions"]))
         for mint in list(self.s["positions"]):
+            try:
+                self._exit_one(mint, pairs, now)
+            except Exception as e:
+                self._error("exit", mint, e)
+
+    def _exit_one(self, mint, pairs, now):
+        if True:
             pos = self.s["positions"][mint]
             pair = pairs.get(mint)
             price = S.pair_price(pair) if pair else None
             if not price:
                 P.log_decision("exit", mint, pos["symbol"], "NO_PRICE", "価格を取得できず — 次の確認で再試行")
-                continue
+                return
             liq = (pair.get("liquidity") or {}).get("usd")
             pos["liq"] = liq or pos.get("liq")
             frac, why = A.exit_decision(pos, price, liq, now)
@@ -88,9 +99,38 @@ class Desk:
                 P.log_decision("exit", mint, pos["symbol"], "SELL", why, fraction=frac,
                                change_pct=round(chg * 100, 2), pnl=round(pnl, 2))
 
+    def _error(self, where, mint, e):
+        import traceback
+        st = self.s["stats"]
+        st["errors"] = st.get("errors", 0) + 1
+        msg = f"{type(e).__name__}: {str(e)[:120]}"
+        P.log_decision("error", mint, "", "ERROR", f"[{where}] {msg}")
+        print("ERROR", where, mint, msg, flush=True)
+        traceback.print_exc()
+
     # ------------------------------------------------ entries
+    def prefilter(self, mint, pair, now):
+        """Free checks before spending any RPC credits."""
+        if not pair:
+            return "データ不足: DexScreenerにペアが無い"
+        if pair.get("dexId") != "pumpswap":
+            return f"PumpSwap以外の取引所（{pair.get('dexId')}）"
+        created = (pair.get("pairCreatedAt") or 0) / 1000
+        if created and (now - created) / 60 > C.MAX_AGE_AFTER_GRAD_MIN:
+            return f"卒業から{(now - created) / 3600:.0f}時間たっている（新しい卒業ではない）"
+        return None
+
     def evaluate(self, mint, pair, radar, now=None):
         now = now or time.time()
+        bad = self.prefilter(mint, pair, now)
+        if bad:
+            c = self.s["candidates"].setdefault(mint, {"seen": int(now), "grad": None, "symbol": "",
+                                                       "status": "waiting", "checks": 0})
+            c["status"] = "skipped"
+            st = self.s["stats"].setdefault("prefiltered", {})
+            key = re.sub(r"\$?\d[\d,\.]*", "N", bad.split("（")[0])
+            st[key] = st.get(key, 0) + 1
+            return "skipped"
         cand = self.s["candidates"].setdefault(mint, {"seen": int(now), "grad": None, "symbol": "",
                                                       "status": "waiting", "checks": 0})
         cand["checks"] += 1
@@ -153,9 +193,18 @@ class Desk:
         due = self.scanner.due(self.s, now)
         if due:
             radar = load_radar()
-            pairs = self.fetch_pairs(due)
-            for m in due:
-                self.evaluate(m, pairs.get(m), radar, now)
+            pairs = self.fetch_pairs(due[:30])
+            spent = 0
+            for m in due[:30]:
+                if spent >= C.MAX_EVALS_PER_CYCLE:
+                    break                      # keep cycles short so exits are checked often
+                try:
+                    r = self.evaluate(m, pairs.get(m), radar, now)
+                    if r not in ("skipped", "wait"):
+                        spent += 1
+                except Exception as e:
+                    self.s["candidates"].get(m, {})["status"] = "error"
+                    self._error("evaluate", m, e)
         self.heartbeat(now)
         return "ok"
 
@@ -165,6 +214,8 @@ class Desk:
         used = scanner.CALLS["n"] - self._calls0
         self._calls0 = scanner.CALLS["n"]
         self.s["credits"][mk] = self.s["credits"].get(mk, 0) + used
+        self.s["rpc"] = scanner.RPC_KIND
+        self.s["rpc_samples"] = dict(scanner.ERR_SAMPLES)
         P.save_state(self.s)
 
 
@@ -176,16 +227,25 @@ async def run_loop(minutes):
     n = desk.scanner.backfill(desk.s)
     print(f"desk started; backfilled {n} graduated coins; open={len(desk.s['positions'])}", flush=True)
 
+    desk.s["stats"]["backfilled"] = desk.s["stats"].get("backfilled", 0) + n
+
     async def ticker():
         while time.time() < until:
-            r = await asyncio.to_thread(desk.cycle)
+            try:
+                r = await asyncio.to_thread(desk.cycle)
+            except Exception as e:             # a bug must never stop the desk
+                desk._error("cycle", "", e)
+                r = "error"
             if r == "killed":
                 print("KILL file found -> stopping safely", flush=True)
                 break
             await asyncio.sleep(C.TICK_SEC)
 
-    await asyncio.gather(S.listen_migrations(lambda m: desk.scanner.on_migration(desk.s, m), until),
-                         ticker())
+    def on_mig(m):
+        desk.s["stats"]["migrations"] = desk.s["stats"].get("migrations", 0) + 1
+        desk.scanner.on_migration(desk.s, m)
+
+    await asyncio.gather(S.listen_migrations(on_mig, until), ticker())
     desk.heartbeat()
     P.trim_log()
     print("desk stopped", json.dumps(desk.s["stats"], ensure_ascii=False), flush=True)

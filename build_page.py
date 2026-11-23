@@ -16,9 +16,9 @@ def load(name, default):
 
 
 def main():
-    wallets = load("wallets.json", {})
-    tokens = load("tokens.json", [])
-    meta = load("meta.json", {})
+    import scanner
+    wallets, tokens, meta = scanner.rebuild(DATA)      # merge every run log
+    scanner.write_derived(wallets, tokens, meta, DATA)
     # wallets seen early on 2+ coins are worth listing; keep the page light
     ranked = sorted(((w, v) for w, v in wallets.items() if v["count"] >= 2),
                     key=lambda x: (-x[1]["count"], -x[1]["block0"]))[:400]
@@ -48,7 +48,7 @@ def main():
         "suspects": [w for w, v in wallets.items() if 3 <= v["count"] < 5],
         "tokens": {t["mint"]: {"block0": t["block0"], "snipers": t["snipers"],
                                "early": [e["wallet"] for e in t.get("early", [])]}
-                   for t in load("tokens.json", [])},
+                   for t in tokens},
     }
     (SITE / "bots.json").write_text(json.dumps(feed, separators=(",", ":")))
     print("site/bots.json written:", len(feed["bots"]), "bots,", len(feed["tokens"]), "tokens")

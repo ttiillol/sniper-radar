@@ -20,7 +20,8 @@ def build(site: Path):
         "cash": s["cash"], "realized": s["realized"], "today": P.day_pnl(s),
         "positions": s["positions"], "halted": s["halted"], "kill": C.KILL_FILE.exists(),
         "heartbeat": s["last_heartbeat"], "gaps": s["gaps"][-5:][::-1], "stats": s["stats"],
-        "credits": s["credits"].get(mk, 0), "decisions": slim, "watch": sum(
+        "credits": s["credits"].get(mk, 0), "decisions": slim, "rpc": s.get("rpc"),
+        "samples": s.get("rpc_samples") or {}, "watch": sum(
             1 for c in s["candidates"].values() if c.get("status") == "waiting"),
         "limits": {"daily": C.DAILY_LOSS_LIMIT, "total": C.TOTAL_LOSS_LIMIT, "max": C.MAX_OPEN_POSITIONS,
                    "start": C.START_CASH},
@@ -44,7 +45,7 @@ a{color:var(--acc);text-decoration:none}h1{font-size:20px;margin:4px 0 2px}.sub{
 .b-red{background:#3a1416;color:var(--red)}.b-grn{background:#0f2e1d;color:var(--grn)}.b-org{background:#3a2810;color:var(--org)}
 .row{padding:9px 0;border-top:1px solid var(--line);font-size:13.5px}.row:first-child{border-top:0}
 .tag{font-size:11px;padding:2px 7px;border-radius:99px;margin-right:6px;font-weight:700}
-.BUY{background:#0f2e1d;color:var(--grn)}.SELL{background:#16263f;color:var(--acc)}.REJECT{background:#2a2d35;color:var(--mut)}.WATCH{background:#3a2810;color:var(--org)}.RESUME,.PAUSE,.NO_PRICE{background:#3a1416;color:var(--red)}
+.BUY{background:#0f2e1d;color:var(--grn)}.SELL{background:#16263f;color:var(--acc)}.REJECT{background:#2a2d35;color:var(--mut)}.WATCH{background:#3a2810;color:var(--org)}.RESUME,.PAUSE,.NO_PRICE,.ERROR{background:#3a1416;color:var(--red)}
 .small{font-size:11.5px;color:var(--mut)}.bar{height:8px;border-radius:9px;background:#11141a;overflow:hidden;margin-top:6px}.bar i{display:block;height:100%;background:var(--red)}
 .filters{display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap}.f{padding:5px 10px;border-radius:99px;background:#11141a;font-size:12px;color:var(--mut)}.f.on{background:var(--acc);color:#04122a;font-weight:700}
 .warn{font-size:12.5px;color:var(--mut)}.warn b{color:var(--org)}
@@ -62,6 +63,7 @@ a{color:var(--acc);text-decoration:none}h1{font-size:20px;margin:4px 0 2px}.sub{
 <div class="small" style="margin-top:10px">今日の損失枠 <span id="dl"></span></div><div class="bar"><i id="dlb"></i></div>
 <div class="small" style="margin-top:8px">累計の損失枠 <span id="tl"></span></div><div class="bar"><i id="tlb"></i></div>
 </div>
+<div class="card" id="hc"></div>
 <div class="card"><h2>保有中</h2><div id="poss"></div></div>
 <div class="card"><h2>判断の記録</h2>
 <div class="filters"><span class="f on" data-f="all">すべて</span><span class="f" data-f="BUY">買い</span><span class="f" data-f="SELL">売り</span><span class="f" data-f="REJECT">見送り</span><span class="f" data-f="WATCH">様子見</span></div>
@@ -92,11 +94,17 @@ $("#banner").innerHTML=D.halted?`<div class="banner b-red">⛔ 完全停止中�
 const P=Object.entries(D.positions);
 $("#poss").innerHTML=P.length?P.map(([m,p])=>`<div class="row"><b>${(p.symbol||"?").replace(/</g,"")}</b> ${usd(p.cost)} ・ ${ago(p.opened)}に購入${p.half_sold?" ・ 半分利確済":""}
  <div class="small">買値 ${p.entry.toPrecision(4)} ・ 最高値 ${(p.peak/p.entry*100-100).toFixed(1)}% ・ <a href="https://dexscreener.com/solana/${m}" target="_blank" rel="noopener">チャート</a></div></div>`).join(""):'<div class="small">保有なし</div>';
-const NM={BUY:"買い",SELL:"売り",REJECT:"見送り",WATCH:"様子見",RESUME:"再開",PAUSE:"一時停止",NO_PRICE:"価格不明"};
+const NM={BUY:"買い",SELL:"売り",REJECT:"見送り",WATCH:"様子見",RESUME:"再開",PAUSE:"一時停止",NO_PRICE:"価格不明",ERROR:"エラー"};
 let F="all";function drawDec(){const L=D.decisions.filter(d=>F==="all"||d.action===F).slice(0,60);
  $("#dec").innerHTML=L.length?L.map(d=>`<div class="row"><span class="tag ${d.action}">${NM[d.action]||d.action}</span><b>${(d.symbol||"").replace(/</g,"")}</b> <span class="small">${ago(d.ts)}</span>
  <div class="small">${(d.reason||"").replace(/</g,"")}</div></div>`).join(""):'<div class="small">まだ記録がありません</div>'}
 document.querySelectorAll(".f").forEach(e=>e.onclick=()=>{document.querySelectorAll(".f").forEach(x=>x.classList.remove("on"));e.classList.add("on");F=e.dataset.f;drawDec()});drawDec();
+(function(){const st=D.stats,pf=Object.entries(st.prefiltered||{}).sort((a,b)=>b[1]-a[1]).slice(0,4).map(([k,v])=>k+" "+v).join("・")||"なし";
+$("#hc").innerHTML=`<h2>🩺 デスクの調子</h2><div class="small" style="line-height:1.9">
+卒業コインの受信 ${st.migrations||0} ・ 補充 ${st.backfilled||0} ・ 審査 ${st.evaluated||0}<br>
+無料で除外：${pf}<br>
+エラー ${st.errors||0} 件 ・ データ窓口 ${D.rpc==="helius"?"Helius（専用）":"公共（混みやすい）"} ・ 今月 ${(D.credits||0).toLocaleString()} クレジット
+${Object.keys(D.samples).length?"<br>エラー例："+Object.values(D.samples).map(x=>String(x).replace(/</g,"")).join(" ／ "):""}</div>`})();
 const R=Object.entries(D.stats.rejected||{}).sort((a,b)=>b[1]-a[1]).slice(0,10);
 $("#rej").innerHTML=R.length?R.map(([k,v])=>`<div class="row" style="display:flex;justify-content:space-between"><span>${k.replace(/</g,"")}</span><b>${v}</b></div>`).join(""):'<div class="small">まだありません</div>';
 $("#gaps").innerHTML=D.gaps.length?D.gaps.map(g=>`<div class="row">${ago(g.ts)} ・ ${Math.round(g.sec/60)}分停止 ・ 再開時の保有 ${g.open}件</div>`).join(""):'<div class="small">記録なし</div>';

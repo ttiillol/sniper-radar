@@ -45,7 +45,7 @@ jobs:
         run: |
           git config user.name "sniper-radar"
           git config user.email "actions@users.noreply.github.com"
-          git add data/wallets.json data/tokens.json data/meta.json
+          git add data/log
           git diff --cached --quiet || git commit -m "radar data"
           for i in 1 2 3 4 5; do git pull --rebase -X theirs origin main && git push && break; sleep $((i*4)); done
 

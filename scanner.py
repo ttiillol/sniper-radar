@@ -31,6 +31,7 @@ DATA = Path(__file__).parent / "data"
 WALLETS_FILE = DATA / "wallets.json"
 TOKENS_FILE = DATA / "tokens.json"
 META_FILE = DATA / "meta.json"
+LOG_DIR = DATA / "log"     # one file per run: never conflicts, never overwritten
 
 WAIT_BEFORE_CHECK = 150      # seconds after creation before inspecting a coin
 RETRY_DELAY = 60             # seconds before the single retry of a failed coin
@@ -208,6 +209,74 @@ def record(wallets, tokens, info, result, now=None):
         w["recent"] = ([info.get("symbol") or info["mint"][:6]] + w["recent"])[:8]
 
 
+def migrate_legacy(data_dir=None):
+    """One-time: turn the old wallets/tokens files into a log file so nothing is lost."""
+    d = data_dir or DATA
+    log = d / "log"
+    if log.exists() and any(log.glob("*.jsonl")):
+        return
+    toks = load(d / "tokens.json", [])
+    if not toks:
+        return
+    log.mkdir(parents=True, exist_ok=True)
+    with open(log / "00000000-legacy.jsonl", "w") as f:
+        for t in reversed(toks):
+            f.write(json.dumps({k: t.get(k) for k in ("mint", "name", "symbol", "creator", "time", "early")},
+                               separators=(",", ":")) + "\n")
+    old = load(d / "meta.json", {})
+    (log / "00000000-legacy.meta.json").write_text(json.dumps(
+        {"start": min(t["time"] for t in toks), "end": old.get("last_run"), "runs": old.get("runs", 1),
+         "stats": old.get("last_stats", {}), "credits": {}}))
+
+
+def rebuild(data_dir=None):
+    """Aggregate every run log -> (wallets, tokens, meta). Order-independent and merge-safe."""
+    d = data_dir or DATA
+    migrate_legacy(d)
+    log = d / "log"
+    recs, metas = [], []
+    for f in sorted(log.glob("*.jsonl")) if log.exists() else []:
+        for line in f.read_text().splitlines():
+            if line.strip():
+                try:
+                    recs.append(json.loads(line))
+                except ValueError:
+                    pass
+    for f in sorted(log.glob("*.meta.json")) if log.exists() else []:
+        m = load(f, None)
+        if m:
+            metas.append(m)
+    seen, uniq = set(), []
+    for r in sorted(recs, key=lambda r: r.get("time") or 0):
+        if r["mint"] not in seen:            # same coin checked twice -> count once
+            seen.add(r["mint"])
+            uniq.append(r)
+    wallets, tokens = {}, []
+    for r in uniq:
+        record(wallets, tokens, r, {"early": r.get("early") or []}, now=r.get("time"))
+    credits = {}
+    for m in metas:
+        for k, v in (m.get("credits") or {}).items():
+            credits[k] = credits.get(k, 0) + v
+    newest = max(metas, key=lambda m: m.get("end") or 0) if metas else {}
+    meta = {"runs": sum(m.get("runs", 1) for m in metas), "tokens_total": len(uniq), "credits": credits,
+            "last_run": newest.get("end"), "last_stats": newest.get("stats", {})}
+    return wallets, tokens, meta
+
+
+def radar_credits(month, data_dir=None):
+    log = (data_dir or DATA) / "log"
+    return sum((load(f, {}).get("credits") or {}).get(month, 0) for f in log.glob("*.meta.json")) \
+        if log.exists() else 0
+
+
+def write_derived(wallets, tokens, meta, data_dir=None):
+    d = data_dir or DATA
+    (d / "wallets.json").write_text(json.dumps(wallets, separators=(",", ":")))
+    (d / "tokens.json").write_text(json.dumps(tokens, separators=(",", ":")))
+    (d / "meta.json").write_text(json.dumps(meta, separators=(",", ":")))
+
+
 def month_key(t=None):
     return time.strftime("%Y-%m", time.gmtime(t or time.time()))
 
@@ -215,14 +284,15 @@ def month_key(t=None):
 # ---------------------------------------------------------------- main loop
 async def run(minutes, max_tokens):
     DATA.mkdir(exist_ok=True)
-    wallets = load(WALLETS_FILE, {})
-    tokens = load(TOKENS_FILE, [])
-    meta = load(META_FILE, {})
-    meta.setdefault("runs", 0)
-    meta.setdefault("tokens_total", 0)
-    credits = meta.setdefault("credits", {})
+    wallets, tokens, meta = rebuild(DATA)
     mk = month_key()
-    used_before = credits.get(mk, 0) if RPC_KIND == "helius" else 0
+    used_before = radar_credits(mk, DATA) if RPC_KIND == "helius" else 0
+    run_id = time.strftime("%Y%m%d-%H%M%S", time.gmtime()) + "-" + os.urandom(2).hex()
+    log_dir = DATA / "log"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    run_log = log_dir / f"{run_id}.jsonl"
+    run_meta = log_dir / f"{run_id}.meta.json"
+    run_records = []
 
     start = time.time()
     deadline = start + minutes * 60
@@ -233,16 +303,16 @@ async def run(minutes, max_tokens):
     stop = {"budget": False}
 
     def save():
-        WALLETS_FILE.write_text(json.dumps(wallets, separators=(",", ":")))
-        TOKENS_FILE.write_text(json.dumps(tokens, separators=(",", ":")))
-        if RPC_KIND == "helius":
-            credits[mk] = used_before + CALLS["n"]
-        for k in list(credits):            # keep 3 months
-            if k < month_key(time.time() - 95 * 86400):
-                credits.pop(k)
-        meta.update(last_run=int(time.time()),
-                    last_stats=dict(stats, rpc_calls=CALLS["n"], samples=dict(ERR_SAMPLES)))
-        META_FILE.write_text(json.dumps(meta, separators=(",", ":")))
+        with open(run_log, "w") as f:
+            for r in run_records:
+                f.write(json.dumps(r, separators=(",", ":")) + "\n")
+        st = dict(stats, rpc_calls=CALLS["n"], samples=dict(ERR_SAMPLES))
+        run_meta.write_text(json.dumps({"start": int(start), "end": int(time.time()), "runs": 1, "stats": st,
+                                        "credits": {mk: CALLS["n"]} if RPC_KIND == "helius" else {}}))
+        meta.update(last_run=int(time.time()), last_stats=st,
+                    credits=dict(meta.get("credits", {}), **({mk: used_before + CALLS["n"]}
+                                                           if RPC_KIND == "helius" else {})))
+        write_derived(wallets, tokens, meta, DATA)
 
     async def listen():
         while time.time() < deadline:
@@ -311,6 +381,8 @@ async def run(minutes, max_tokens):
                 print("unexpected", info["mint"], repr(e)[:160], flush=True)
                 continue
             record(wallets, tokens, info, res)
+            run_records.append({**{k: info.get(k) for k in ("mint", "name", "symbol", "creator")},
+                                "time": int(time.time()), "early": res["early"]})
             stats["checked"] += 1
             meta["tokens_total"] += 1
             since_save += 1
@@ -321,7 +393,7 @@ async def run(minutes, max_tokens):
         for _ in queue:
             fail("out_of_time")
 
-    meta["runs"] += 1
+    meta["runs"] = meta.get("runs", 0) + 1
     await asyncio.gather(listen(), worker())
     save()
     print("done", json.dumps(meta["last_stats"]), flush=True)

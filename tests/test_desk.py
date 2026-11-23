@@ -232,3 +232,54 @@ def test_kill_file_stops_loop():
     C.KILL_FILE.write_text("x")
     d = M.Desk(state=P.new_state(), fetch_pairs=lambda m: {})
     assert d.cycle(NOW) == "killed"
+
+
+# ------------------------------------------------------------------ robustness (found by self-check)
+def test_old_graduation_skipped_without_spending_credits(monkeypatch):
+    s = P.new_state()
+    s["candidates"]["OLD"] = {"seen": NOW - 1800, "grad": None, "symbol": "Z", "status": "waiting", "checks": 0}
+    called = []
+    d = M.Desk(state=s, fetch_pairs=lambda m: {"OLD": pair(age_min=60 * 24 * 400)},
+               rug=lambda *a: called.append(1))
+    monkeypatch.setattr(M, "credits_ok", lambda st: True)
+    monkeypatch.setattr(M, "load_radar", lambda: {"bots": set(), "tokens": {}})
+    d.cycle(NOW)
+    assert not called and s["candidates"]["OLD"]["status"] == "skipped"
+
+
+def test_non_pumpswap_skipped(monkeypatch):
+    p = pair(); p["dexId"] = "raydium"
+    d = M.Desk(state=P.new_state(), rug=lambda *a: 1 / 0)
+    assert d.evaluate("X", p, {"bots": set(), "tokens": {}}, NOW) == "skipped"
+
+
+def test_bug_in_one_coin_never_stops_the_desk(monkeypatch):
+    s = P.new_state()
+    for m in ("A", "B"):
+        s["candidates"][m] = {"seen": NOW - 1800, "grad": None, "symbol": m, "status": "waiting", "checks": 0}
+    def rug(mint, *a):
+        if mint == "A":
+            raise KeyError("boom")
+        return rug_ok(mint, *a)
+    rug_ok = lambda mint, p, st, radar, now: globals()["rug"](p=p, state=st)
+    d = M.Desk(state=s, fetch_pairs=lambda ms: {m: pair(sym=m + "X") for m in ms}, rug=rug)
+    monkeypatch.setattr(M, "credits_ok", lambda st: True)
+    monkeypatch.setattr(M, "load_radar", lambda: {"bots": set(), "tokens": {}})
+    assert d.cycle(NOW) == "ok"
+    assert s["candidates"]["A"]["status"] == "error" and "B" in s["positions"]
+    assert s["stats"]["errors"] == 1
+
+
+def test_evaluations_capped_per_cycle(monkeypatch):
+    s = P.new_state()
+    for i in range(10):
+        s["candidates"][f"M{i}"] = {"seen": NOW - 1800, "grad": None, "symbol": "", "status": "waiting", "checks": 0}
+    n = []
+    def rug(*a):
+        n.append(1)
+        return {"ok": False, "reasons": ["x"], "facts": {}}
+    d = M.Desk(state=s, fetch_pairs=lambda ms: {m: pair() for m in ms}, rug=rug)
+    monkeypatch.setattr(M, "credits_ok", lambda st: True)
+    monkeypatch.setattr(M, "load_radar", lambda: {"bots": set(), "tokens": {}})
+    d.cycle(NOW)
+    assert len(n) == C.MAX_EVALS_PER_CYCLE

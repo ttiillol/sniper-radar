@@ -53,4 +53,5 @@ MIN_ENTRY_SCORE = 60
 # --- loop -------------------------------------------------------------------------
 import os
 TICK_SEC = float(os.environ.get("DESK_TICK") or 45)   # live server: 10
-GAP_WARN_SEC = 120                  # a pause longer than this is logged as a gap
+GAP_WARN_SEC = 120
+MAX_EVALS_PER_CYCLE = 3             # full (credit-using) evaluations per cycle                  # a pause longer than this is logged as a gap

@@ -108,7 +108,8 @@ def rug_check(mint, pair, state, radar, now=None, rpc=None, rc=None, gp=None, ho
         if supply and bot_amt / supply >= C.MAX_BOT_HOLD_PCT:
             fails.append(f"狙撃ボット財布が {bot_amt/supply*100:.1f}% 保有（レーダー）")
     except Exception as e:
-        fails.append(f"データ不足: オンチェーン情報が取れない（{type(e).__name__}）")
+        why = getattr(e, "reason", type(e).__name__)
+        fails.append(f"データ不足: オンチェーン情報が取れない（{why}）")
         supply, hs = None, []
 
     # --- RugCheck: creator holding, LP lock, danger flags
@@ -166,8 +167,8 @@ def rug_check(mint, pair, state, radar, now=None, rpc=None, rc=None, gp=None, ho
         facts["block0"], facts["snipers"] = b0, sn
         if b0 > C.MAX_BLOCK0_BUNDLERS:
             fails.append(f"作成と同じ瞬間に{b0}財布がまとめ買い（レーダー）")
-    except scanner.RpcError as e:
-        notes.append(f"初期の買い手を確認できず（{e.reason}）")
+    except Exception as e:
+        notes.append(f"初期の買い手を確認できず（{getattr(e, 'reason', type(e).__name__)}）")
 
     return V(not fails, reasons=fails or ["全項目合格"], notes=notes, facts=facts, creator=creator)
 

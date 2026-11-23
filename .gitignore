@@ -2,3 +2,6 @@ __pycache__/
 site/
 .pytest_cache/
 *.tmp
+data/wallets.json
+data/tokens.json
+data/meta.json

@@ -46,9 +46,16 @@ scanner.websockets.connect = lambda *a, **k: FakeWS()
 scanner.analyze_token = fake_analyze
 asyncio.run(scanner.run(minutes=0.05, max_tokens=40))   # 3 seconds of listening
 
-meta = json.loads(scanner.META_FILE.read_text())
+meta = json.loads((tmp / "meta.json").read_text())
 st = meta["last_stats"]
-w = json.loads(scanner.WALLETS_FILE.read_text())
+w = json.loads((tmp / "wallets.json").read_text())
+# rebuilding from the run log must give the same answer (merge-safe storage)
+w2, t2, m2 = scanner.rebuild(tmp)
+assert w2[BOT]["count"] == w[BOT]["count"] and m2["tokens_total"] == meta["tokens_total"]
+# a second, overlapping run's log must ADD, not overwrite
+(tmp / "log" / "zzz-other.jsonl").write_text(json.dumps({"mint": "OTHERpump", "time": 1, "early": [{"wallet": BOT, "gap": 1}]}) + "\n")
+w3, _, m3 = scanner.rebuild(tmp)
+assert w3[BOT]["count"] == w[BOT]["count"] + 1 and m3["tokens_total"] == meta["tokens_total"] + 1
 print(json.dumps(st))
 assert st["queued"] <= 40, "per-run cap respected"
 assert st["seen"] > st["queued"], "sampling spreads quota instead of grabbing the first N"
