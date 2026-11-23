@@ -37,6 +37,22 @@ def main():
     (SITE / "index.html").write_text(html, encoding="utf-8")
     print("site/index.html written,", len(html) // 1024, "KB")
 
+    # Machine-readable feed for other bots (e.g. the trading desk):
+    #   bots     = wallets that sniped 5+ coins  -> never copy, treat as dumpers
+    #   suspects = 3-4 coins
+    #   tokens   = per-coin count of block-0 (bundle) buyers and snipers
+    feed = {
+        "updated": int(time.time()),
+        "tokens_checked": meta.get("tokens_total", 0),
+        "bots": [w for w, v in wallets.items() if v["count"] >= 5],
+        "suspects": [w for w, v in wallets.items() if 3 <= v["count"] < 5],
+        "tokens": {t["mint"]: {"block0": t["block0"], "snipers": t["snipers"],
+                               "early": [e["wallet"] for e in t.get("early", [])]}
+                   for t in load("tokens.json", [])},
+    }
+    (SITE / "bots.json").write_text(json.dumps(feed, separators=(",", ":")))
+    print("site/bots.json written:", len(feed["bots"]), "bots,", len(feed["tokens"]), "tokens")
+
 
 TEMPLATE = r"""<!DOCTYPE html>
 <html lang="ja"><head><meta charset="utf-8">
