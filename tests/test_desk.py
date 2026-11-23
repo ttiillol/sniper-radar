@@ -776,3 +776,33 @@ def test_kol_buys_are_recorded_for_the_benchmark(monkeypatch):
     ks = s["kol_seen"]
     assert ks[-1]["names"] == ["xander"] and ks[-1]["symbol"] == "GOOD" and ks[-1]["a"] == 1
     assert s["tracking"]["M"]["facts"]["kol_n"] == 1
+
+
+# ------------------------------------------------------------------ cockpit (12 agents, charts, ladder) on the phone page
+def test_cockpit_live_data(monkeypatch):
+    import json as _j
+    from desk import live as L
+    L.reset()
+    trades = {"v": [_tr(NOW - 20 - i, "buy", 100, f"b{i}") for i in range(20)] + [_tr(NOW - 15, "buy", 3_000, "W1"),
+                                                                                   _tr(NOW - 40, "sell", 900, "S1")]}
+    d, s, _ = _flow_desk(monkeypatch, trades)
+    d.cycle(NOW)
+    live = _j.loads(C.LIVE_FILE.read_text())
+    ag = live["agents"]
+    assert {"rug", "bundle", "whale", "kol", "flow", "picker", "sizer", "exec"} <= set(ag)
+    assert set(ag) <= set(L.AGENTS) and "練習買い" in ag["exec"]["x"]
+    st = live["status"]
+    assert st["head"]["open"] == 1 and st["head"]["balance"] == pytest.approx(100, abs=0.5)
+    assert st["charts"][0]["st"] == "保有中" and len(st["charts"][0]["path"]) >= 1
+    fl = st["flow"]
+    assert fl["symbol"] == "GOOD" and fl["wb"] == 1 and fl["ws"] == 1 and len(fl["ladder"]) == 5
+    assert sum(r["nb"] for r in fl["ladder"]) == 21 and fl["whales"][0]["k"] == "buy"
+
+
+def test_desk_page_has_the_cockpit(tmp_path):
+    from desk import page
+    P.save_state(P.new_state())
+    page.build(tmp_path)
+    html = (tmp_path / "desk.html").read_text()
+    for part in ('id="hub"', 'id="charts"', 'id="lad"', 'id="radar"', 'id="term"', "Meme Desk", "BALANCE"):
+        assert part in html

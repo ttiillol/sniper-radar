@@ -55,57 +55,104 @@ TEMPLATE = r"""<!DOCTYPE html>
 <meta http-equiv="refresh" content="120">
 <title>練習売買デスク</title>
 <style>
-:root{--bg:#0f1115;--card:#181b22;--line:#262a33;--tx:#e8eaf0;--mut:#8b91a0;--red:#ff5d5d;--org:#ffa53d;--grn:#3ddc84;--acc:#6aa8ff}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.5 -apple-system,BlinkMacSystemFont,"Hiragino Sans",sans-serif;padding:16px 14px 60px;max-width:640px;margin:auto}
+:root{--bg:#eef0f3;--card:#fff;--line:#e3e6eb;--tx:#121722;--mut:#6b7280;--red:#e5484d;--org:#e0820b;--grn:#16a34a;--acc:#2563eb;--soft:#f6f7f9}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.5 -apple-system,BlinkMacSystemFont,"Hiragino Sans",sans-serif;padding:16px 14px 60px;max-width:780px;margin:auto}
 a{color:var(--acc);text-decoration:none}h1{font-size:20px;margin:4px 0 2px}.sub{color:var(--mut);font-size:12px;margin-bottom:14px}
-.nav{display:flex;gap:8px;margin-bottom:12px}.nav a{flex:1;text-align:center;padding:8px;border-radius:10px;background:var(--card);border:1px solid var(--line);font-size:13px}.nav a.on{background:var(--acc);color:#04122a;font-weight:700}
+.nav{display:flex;gap:8px;margin-bottom:12px}.nav a{flex:1;text-align:center;padding:8px;border-radius:10px;background:var(--card);border:1px solid var(--line);font-size:13px}.nav a.on{background:var(--acc);color:#fff;font-weight:700}
 .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:14px}h2{font-size:15px;margin:0 0 10px}
-.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}.st{background:#11141a;border-radius:10px;padding:10px}.st b{display:block;font-size:20px}.st span{font-size:11px;color:var(--mut)}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}.st{background:var(--soft);border-radius:10px;padding:10px}.st b{display:block;font-size:20px}.st span{font-size:11px;color:var(--mut)}
 .pos{color:var(--grn)}.neg{color:var(--red)}.banner{padding:12px;border-radius:10px;font-weight:700;margin-bottom:14px}
-.b-red{background:#3a1416;color:var(--red)}.b-grn{background:#0f2e1d;color:var(--grn)}.b-org{background:#3a2810;color:var(--org)}
+.b-red{background:#fdeced;color:var(--red)}.b-grn{background:#e7f6ec;color:var(--grn)}.b-org{background:#fdf1e0;color:var(--org)}
 .row{padding:9px 0;border-top:1px solid var(--line);font-size:13.5px}.row:first-child{border-top:0}
 .tag{font-size:11px;padding:2px 7px;border-radius:99px;margin-right:6px;font-weight:700}
-.BUY{background:#0f2e1d;color:var(--grn)}.SELL{background:#16263f;color:var(--acc)}.REJECT{background:#2a2d35;color:var(--mut)}.WATCH{background:#3a2810;color:var(--org)}.RESUME,.PAUSE,.NO_PRICE,.ERROR{background:#3a1416;color:var(--red)}
-.small{font-size:11.5px;color:var(--mut)}.bar{height:8px;border-radius:9px;background:#11141a;overflow:hidden;margin-top:6px}.bar i{display:block;height:100%;background:var(--red)}
-.filters{display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap}.f{padding:5px 10px;border-radius:99px;background:#11141a;font-size:12px;color:var(--mut)}.f.on{background:var(--acc);color:#04122a;font-weight:700}
+.BUY{background:#e7f6ec;color:var(--grn)}.SELL{background:#e8efff;color:var(--acc)}.REJECT{background:#eef0f3;color:var(--mut)}.WATCH{background:#fdf1e0;color:var(--org)}.RESUME,.PAUSE,.NO_PRICE,.ERROR{background:#fdeced;color:var(--red)}
+.small{font-size:11.5px;color:var(--mut)}.bar{height:8px;border-radius:9px;background:var(--soft);overflow:hidden;margin-top:6px}.bar i{display:block;height:100%;background:var(--red)}
+.filters{display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap}.f{padding:5px 10px;border-radius:99px;background:var(--soft);font-size:12px;color:var(--mut)}.f.on{background:var(--acc);color:#fff;font-weight:700}
 .fd{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--line);font-size:13.5px}.fd:first-child{border-top:0}
 .lb{font:700 11px ui-monospace,Menlo,monospace;padding:3px 0;width:46px;text-align:center;border-radius:6px;flex:none}
-.L-BUY{background:#0f2e1d;color:var(--grn)}.L-SELL{background:#16263f;color:var(--acc)}.L-STOP{background:#3a1416;color:var(--red)}.L-SKIP{background:#2a2d35;color:var(--mut)}
+.L-BUY{background:#e7f6ec;color:var(--grn)}.L-SELL{background:#e8efff;color:var(--acc)}.L-STOP{background:#fdeced;color:var(--red)}.L-SKIP{background:#eef0f3;color:var(--mut)}
 .warn{font-size:12.5px;color:var(--mut)}.warn b{color:var(--org)}
 /* live "now doing" card */
 .lv{border-color:var(--line)}.dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--red);margin-right:6px;animation:pulse 1.2s infinite}
 .dot.off{background:var(--mut);animation:none}
-@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(255,93,93,.7)}70%{box-shadow:0 0 0 9px rgba(255,93,93,0)}100%{box-shadow:0 0 0 0 rgba(255,93,93,0)}}
-.now{background:#11141a;border-radius:12px;padding:12px;margin-bottom:10px}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(229,72,77,.7)}70%{box-shadow:0 0 0 9px rgba(229,72,77,0)}100%{box-shadow:0 0 0 0 rgba(229,72,77,0)}}
+.now{background:var(--soft);border-radius:12px;padding:12px;margin-bottom:10px}
 .now .t{font-size:15px;font-weight:700;line-height:1.45}.now .k{width:10px;height:10px;margin:0 8px 0 0;vertical-align:1px}
-.sym{display:inline-block;background:#232836;color:var(--acc);border-radius:7px;padding:1px 8px;margin-right:6px;font:700 13px ui-monospace,Menlo,monospace}
-.scan{height:4px;border-radius:4px;background:#1d2130;overflow:hidden;margin-top:10px;position:relative}
+.sym{display:inline-block;background:#eef2ff;color:var(--acc);border-radius:7px;padding:1px 8px;margin-right:6px;font:700 13px ui-monospace,Menlo,monospace}
+.scan{height:4px;border-radius:4px;background:#eceef2;overflow:hidden;margin-top:10px;position:relative}
 .scan i{position:absolute;top:0;left:-40%;width:40%;height:100%;background:linear-gradient(90deg,transparent,var(--acc),transparent);animation:sweep 1.1s linear infinite}
-.scan.idle i{background:linear-gradient(90deg,transparent,#3b4152,transparent);animation-duration:3s}
+.scan.idle i{background:linear-gradient(90deg,transparent,#cfd4dc,transparent);animation-duration:3s}
 @keyframes sweep{to{left:100%}}
-.ms{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}.ms span{background:#11141a;border-radius:8px;padding:4px 8px;font-size:11.5px;color:var(--mut)}.ms b{color:var(--tx)}
+.ms{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}.ms span{background:var(--soft);border-radius:8px;padding:4px 8px;font-size:11.5px;color:var(--mut)}.ms b{color:var(--tx)}
 .lf{display:flex;gap:8px;align-items:flex-start;padding:7px 4px;border-top:1px solid var(--line);font-size:13px;border-radius:6px}
 .k{display:inline-block;width:8px;height:8px;border-radius:50%;flex:none;background:var(--acc)}.lf .k{margin-top:6px}
-.k-buy{background:var(--grn)}.k-sell{background:var(--acc)}.k-stop,.k-error{background:var(--red)}.k-reject,.k-skip,.k-idle,.k-start{background:#5b6170}.k-wait,.k-watch{background:var(--org)}.k-new{background:#b69cff}.k-work,.k-check,.k-hold{background:var(--acc)}
+.k-buy{background:var(--grn)}.k-sell{background:var(--acc)}.k-stop,.k-error{background:var(--red)}.k-reject,.k-skip,.k-idle,.k-start{background:#9aa1ad}.k-wait,.k-watch{background:var(--org)}.k-new{background:#b69cff}.k-work,.k-check,.k-hold{background:var(--acc)}
 .lf .ic{width:22px;text-align:center;flex:none}.lf .ag{flex:none;width:44px;text-align:right;font-size:11px;color:var(--mut);padding-top:2px}
-.new{animation:flash 2.2s ease-out}@keyframes flash{0%{background:#23314d;transform:translateY(-6px);opacity:.2}25%{opacity:1;transform:none}100%{background:transparent}}
+.new{animation:flash 2.2s ease-out}@keyframes flash{0%{background:#dbe7ff;transform:translateY(-6px);opacity:.2}25%{opacity:1;transform:none}100%{background:transparent}}
 .rr{display:flex;gap:8px;align-items:center;padding:7px 0;border-top:1px solid var(--line);font-size:13px}
-.rb{flex:none;width:90px;height:10px;background:#11141a;border-radius:5px;position:relative}.rb::after{content:"";position:absolute;left:50%;top:-2px;bottom:-2px;width:1px;background:#3b4152}
+.rb{flex:none;width:90px;height:10px;background:var(--soft);border-radius:5px;position:relative}.rb::after{content:"";position:absolute;left:50%;top:-2px;bottom:-2px;width:1px;background:#cfd4dc}
 .rb i{position:absolute;top:0;height:100%;border-radius:5px}
-.cmp{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.cmp div{background:#11141a;border-radius:10px;padding:9px;font-size:11.5px;color:var(--mut)}.cmp b{display:block;font-size:17px;color:var(--tx)}
+.cmp{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.cmp div{background:var(--soft);border-radius:10px;padding:9px;font-size:11.5px;color:var(--mut)}.cmp b{display:block;font-size:17px;color:var(--tx)}
 .r{font-size:10.5px;font-weight:700;padding:1px 6px;border-radius:99px;margin-left:4px;white-space:nowrap;display:inline-block}
-.r-BUY{background:#0f2e1d;color:var(--grn)}.r-SELL{background:#16263f;color:var(--acc)}.r-STOP,.r-ERROR,.r-NO_PRICE{background:#3a1416;color:var(--red)}
-.r-REJECT,.r-SKIP{background:#2a2d35;color:var(--mut)}.r-WATCH,.r-WAIT{background:#3a2810;color:var(--org)}.r-NEW{background:#26203a;color:#b69cff}
+.r-BUY{background:#e7f6ec;color:var(--grn)}.r-SELL{background:#e8efff;color:var(--acc)}.r-STOP,.r-ERROR,.r-NO_PRICE{background:#fdeced;color:var(--red)}
+.r-REJECT,.r-SKIP{background:#eef0f3;color:var(--mut)}.r-WATCH,.r-WAIT{background:#fdf1e0;color:var(--org)}.r-NEW{background:#f1ecff;color:#b69cff}
 #lfeed{max-height:430px;overflow-y:auto}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.hd{display:flex;gap:12px;align-items:center;margin:2px 0 14px}.logo{width:52px;height:52px;border-radius:14px;background:#121722;flex:none;display:grid;place-items:center}
+.hd h1{font-size:22px;margin:0;letter-spacing:-.3px}.hd h1 em{font-style:normal;color:var(--grn)}.hd .sub{margin:2px 0 0;font:11px ui-monospace,Menlo,monospace}
+.bal{margin-left:auto;text-align:right}.bal small{font:10px ui-monospace,Menlo,monospace;color:var(--mut);letter-spacing:1px}.bal b{display:block;font:800 30px/1.05 ui-monospace,Menlo,monospace;letter-spacing:-1px}
+.bal span{font:11px ui-monospace,Menlo,monospace;color:var(--mut)}
+.ct{display:flex;justify-content:space-between;align-items:center;font:11px ui-monospace,Menlo,monospace;color:#4b5563;letter-spacing:.6px;margin-bottom:6px}
+.ct .on{color:var(--grn)}
+.hub{position:relative;width:100%;aspect-ratio:760/440;margin-top:4px}
+.hub svg.wires{position:absolute;inset:0;width:100%;height:100%}
+.ag{position:absolute;transform:translate(-50%,-50%);width:30%;max-width:210px;background:#fff;border:1px solid var(--line);border-radius:10px;padding:6px 8px;display:flex;gap:7px;align-items:center;box-shadow:0 1px 2px rgba(16,24,40,.05);transition:border-color .3s,box-shadow .3s}
+.ag .ic{flex:none;width:24px;height:24px;border-radius:7px;display:grid;place-items:center;color:#fff;font:700 9px ui-monospace,Menlo,monospace}
+.ag .nm{font:700 10.5px ui-monospace,Menlo,monospace;letter-spacing:.3px;white-space:nowrap}.ag .tx{font:10px ui-monospace,Menlo,monospace;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ag .bd{min-width:0;flex:1}
+.ag.act{border-width:2px;box-shadow:0 0 0 4px var(--glow)}.ag.idle .tx{color:#a3a9b3}
+.core{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);text-align:center}
+.core .ring{width:86px;height:86px;border-radius:50%;background:#fff;border:3px solid #121722;display:grid;place-items:center;margin:auto;box-shadow:0 0 0 8px rgba(22,163,74,.08),0 0 0 16px rgba(22,163,74,.05)}
+.core.busy .ring{animation:corepulse 1.4s infinite}@keyframes corepulse{0%{box-shadow:0 0 0 6px rgba(22,163,74,.18),0 0 0 14px rgba(22,163,74,.08)}100%{box-shadow:0 0 0 14px rgba(22,163,74,0),0 0 0 26px rgba(22,163,74,0)}}
+.core .cap{font:700 10.5px ui-monospace,Menlo,monospace;margin-top:8px;white-space:nowrap;background:#fff;padding:2px 8px;border-radius:7px;display:inline-block}.core .cap span{color:var(--mut);font-weight:400}
+.wire{stroke:#d6dae1;stroke-width:.35;stroke-dasharray:1 1.2}.wire.hot{stroke-width:.6;stroke-dasharray:none}.wire.act{stroke-width:.9;stroke-dasharray:2 1.5;animation:flow 0.8s linear infinite}
+@keyframes flow{to{stroke-dashoffset:-7}}
+.charts{display:grid;grid-template-columns:repeat(5,minmax(140px,1fr));gap:8px;overflow-x:auto;padding-bottom:2px}
+.cc{border:1px solid var(--line);border-radius:12px;padding:9px;min-width:140px}.cc.hold{border:2px solid var(--grn)}
+.cc .h{display:flex;justify-content:space-between;align-items:center;font:700 12px ui-monospace,Menlo,monospace}.cc .h a{color:var(--tx)}
+.cc .px{font:700 15px ui-monospace,Menlo,monospace;margin-top:4px}.cc .mc{font:10px ui-monospace,Menlo,monospace;color:var(--mut)}
+.cc .ft{display:flex;justify-content:space-between;font:10px ui-monospace,Menlo,monospace;color:var(--mut);margin-top:4px}
+.cc svg{width:100%;height:84px;display:block;margin-top:6px}
+.trio{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}.trio>.card{min-width:0;margin-bottom:0}.trio .wide{grid-column:1/-1}.trio{margin-bottom:14px}
+@media(max-width:640px){.trio{grid-template-columns:minmax(0,1fr)}.hub{aspect-ratio:390/600}.ag{width:34%;padding:4px 6px;gap:4px;border-radius:8px}.ag .ic{display:none}.ag .nm{font-size:9.5px}.ag .tx{font-size:8.5px}
+.core .ring{width:62px;height:62px}.core .ring svg{width:30px;height:30px}.core .cap{font-size:9px}.hd{flex-wrap:wrap}.hd h1{font-size:19px}.logo{width:42px;height:42px}
+.bal{margin-left:0;width:100%;text-align:left;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}.bal b{font-size:26px}.ct{font-size:10px}}
+.lad{font:11px ui-monospace,Menlo,monospace}.lad .lr{display:grid;grid-template-columns:62px 1fr 64px;gap:6px;align-items:center;height:21px}
+.lad .tk{height:14px;display:flex}.lad .tk i{display:block;height:100%;border-radius:2px}.lad .tk.s i{margin-left:auto;background:#f8c9cb}.lad .tk.b i{background:#bfe8cc}.lad .mid{display:flex;justify-content:space-between;align-items:center;background:#e7f6ec;border-radius:4px;padding:3px 6px;margin:3px 0;font-weight:700}.lad .mid span:last-child{font-weight:400;color:var(--mut)}
+.lad .lr .n{text-align:right;color:var(--mut)}
+.radar svg{width:100%;max-width:230px;display:block;margin:4px auto}
+.sweep{transform-origin:50px 50px;animation:spin 4s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
+.lg{font:11px ui-monospace,Menlo,monospace;display:flex;justify-content:space-between;padding:2px 0}
+.term{background:#0e1117;color:#c9d1d9;border-radius:10px;padding:10px;font:11px/1.55 ui-monospace,Menlo,monospace;height:300px;overflow:hidden;position:relative}
+.term .l{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.term .tm{color:#6e7681}.term .g{color:#3fb950}.term .r{color:#f85149}.term .b{color:#58a6ff}.term .o{color:#d29922}.term .p{color:#bc8cff}.term .d{color:#8b949e}
+.term .cur{color:#3fb950}.term .cur::after{content:"_";animation:blink 1s step-end infinite}@keyframes blink{50%{opacity:0}}
+.term .new{animation:tflash 1.6s ease-out}@keyframes tflash{0%{background:#1f6feb44}100%{background:transparent}}
 </style></head><body>
 <div class="nav"><a href="./">レーダー</a><a class="on" href="desk.html">デスク</a></div>
-<h1>練習売買デスク <span class="small">（ペーパートレード）</span></h1>
-<div class="sub" id="upd"></div>
+<div class="hd"><div class="logo"><svg width="30" height="30" viewBox="0 0 30 30"><circle cx="15" cy="15" r="11" fill="none" stroke="#fff" stroke-width="2.4"/><circle cx="15" cy="15" r="4" fill="#3ddc84"/><path d="M15 1v6M15 23v6M1 15h6M23 15h6" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/></svg></div>
+<div><h1>Sniper Radar <em>Meme Desk</em></h1><div class="sub" id="hsub"></div></div>
+<div class="bal"><small>BALANCE</small><b id="hbal">-</b><span id="hstat"></span></div></div>
 <div id="banner"></div>
-<div class="card lv"><h2><span class="dot" id="ldot"></span>いま実行中 <span class="small" id="lage">接続中…</span></h2>
-<div class="now"><div class="t" id="lnow">ライブ情報を待っています…</div><div class="small" id="lsince"></div><div class="scan" id="lscan"><i></i></div></div>
-<div class="ms" id="lms"></div>
-<div id="lfeed"></div></div>
+<div class="card"><div class="ct"><span>12の担当 → 1つのデスク ・ リアルタイム</span><span class="on" id="online">● -</span></div>
+<div class="hub" id="hub"><svg class="wires" viewBox="0 0 100 100" preserveAspectRatio="none" id="wires"></svg>
+<div class="core" id="core"><div class="ring"><svg width="40" height="40" viewBox="0 0 30 30"><circle cx="15" cy="15" r="11" fill="none" stroke="#121722" stroke-width="2.4"/><circle cx="15" cy="15" r="4" fill="#16a34a"/><path d="M15 1v6M15 23v6M1 15h6M23 15h6" stroke="#121722" stroke-width="2.4" stroke-linecap="round"/></svg></div><div class="cap" id="corecap">DESK <span>· 接続中</span></div></div>
+</div></div>
+<div class="card"><div class="ct"><span>コインチャート ・ 保有中と直近の審査 ・ 5分ごと</span><span id="chst">-</span></div><div class="charts" id="charts"></div></div>
+<div class="trio">
+<div class="card"><div class="ct"><span>売り買いの板 ・ 金額帯</span><span class="on" id="ladsym"></span></div><div class="lad" id="lad"></div></div>
+<div class="card radar"><div class="ct"><span>大口レーダー</span><span id="radsym"></span></div><div id="radar"></div></div>
+<div class="card wide"><div class="ct"><span>$ tail -f desk.log</span><span id="lcount"></span></div><div class="term" id="term"></div></div>
+</div>
 <div class="card"><div class="grid">
 <div class="st"><b id="eq">-</b><span>資金（保有分は買値で計算）</span></div>
 <div class="st"><b id="rl">-</b><span>確定した損益（累計）</span></div>
@@ -137,7 +184,7 @@ const ago=t=>{if(!t)return"-";const m=Math.round((Date.now()/1000-t)/60);return 
 const usd=v=>(v<0?"-$":"$")+Math.abs(v).toFixed(2), sg=v=>(v>=0?"+":"")+usd(v).replace("+","");
 const cls=v=>v>0?"pos":v<0?"neg":"";
 const open=Object.values(D.positions).reduce((a,p)=>a+p.cost,0);
-$("#upd").textContent="最終更新 "+ago(D.heartbeat)+" ・ 審査 "+(D.stats.evaluated||0)+" 件 ・ 買い "+(D.stats.bought||0)+" ・ 売り "+(D.stats.sold||0);
+$("#hsub").dataset.upd="最終更新 "+ago(D.heartbeat)+" ・ 審査 "+(D.stats.evaluated||0)+" 件 ・ 買い "+(D.stats.bought||0)+" ・ 売り "+(D.stats.sold||0);
 $("#eq").textContent=usd(D.cash+open);
 $("#rl").innerHTML=`<span class="${cls(D.realized)}">${sg(D.realized)}</span>`;
 $("#td").innerHTML=`<span class="${cls(D.today)}">${sg(D.today)}</span>`;
@@ -147,7 +194,7 @@ $("#dl").textContent=`${usd(dl)} / ${usd(D.limits.daily)}`;$("#dlb").style.width
 $("#tl").textContent=`${usd(tl)} / ${usd(D.limits.total)}`;$("#tlb").style.width=Math.min(100,tl/D.limits.total*100)+"%";
 const stale=D.heartbeat&&Date.now()/1000-D.heartbeat>3*3600;
 $("#banner").innerHTML=D.halted?`<div class="banner b-red">完全停止中：${D.halted}</div>`:D.kill?`<div class="banner b-red">停止ファイルにより停止中</div>`:
- dl>=D.limits.daily?`<div class="banner b-org">今日の損失上限に到達 — 明日まで新規購入なし</div>`:stale?`<div class="banner b-org">3時間以上更新されていません</div>`:`<div class="banner b-grn">● 稼働中（練習モード）</div>`;
+ dl>=D.limits.daily?`<div class="banner b-org">今日の損失上限に到達 — 明日まで新規購入なし</div>`:stale?`<div class="banner b-org">3時間以上更新されていません</div>`:"";
 const P=Object.entries(D.positions);
 $("#poss").innerHTML=P.length?P.map(([m,p])=>`<div class="row"><b>${(p.symbol||"?").replace(/</g,"")}</b> ${usd(p.cost)} ・ ${ago(p.opened)}に購入${p.half_sold?" ・ 半分利確済":""}
  <div class="small">買値 ${p.entry.toPrecision(4)} ・ 最高値 ${(p.peak/p.entry*100-100).toFixed(1)}% ・ <a href="https://dexscreener.com/solana/${m}" target="_blank" rel="noopener">チャート</a></div></div>`).join(""):'<div class="small">保有なし</div>';
@@ -200,7 +247,7 @@ $("#gaps").innerHTML=D.gaps.length?D.gaps.map(g=>`<div class="row">${ago(g.ts)} 
     const c=J.curve;if(c.length>1){const ys=c.map(p=>p[1]).concat([D.limits.start]),mn=Math.min(...ys),mx=Math.max(...ys),W=600,H=90,
       X=i=>i/(c.length-1)*W,Y=v=>H-6-(v-mn)/((mx-mn)||1)*(H-12);
       h+=`<div class="small" style="margin-top:10px">資金の推移（終わったトレードごと）</div><svg viewBox="0 0 ${W} ${H}" style="width:100%;height:90px;margin-top:4px">
-      <line x1="0" x2="${W}" y1="${Y(D.limits.start)}" y2="${Y(D.limits.start)}" stroke="#3b4152" stroke-dasharray="4 4"/>
+      <line x1="0" x2="${W}" y1="${Y(D.limits.start)}" y2="${Y(D.limits.start)}" stroke="#cfd4dc" stroke-dasharray="4 4"/>
       <polyline fill="none" stroke="${c[c.length-1][1]>=D.limits.start?"#3ddc84":"#ff5d5d"}" stroke-width="2.5" points="${c.map((p,i)=>X(i)+","+Y(p[1])).join(" ")}"/></svg>`}
     h+=`<div style="margin-top:8px">`+(D.jtrades||[]).slice(0,15).map(t=>{const w=Math.min(50,Math.abs(t.R)/3*50);
       return `<div class="rr"><b style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><a href="https://dexscreener.com/solana/${t.mint}" target="_blank" rel="noopener">${(t.symbol||"?").replace(/</g,"")}</a>
@@ -226,25 +273,66 @@ $("#gaps").innerHTML=D.gaps.length?D.gaps.map(g=>`<div class="row">${ago(g.ts)} 
 })();
 (function(){
   const esc=x=>String(x==null?"":x).replace(/[<>&"]/g,c=>({"<":"&lt;",">":"&gt;","&":"&amp;",'"':"&quot;"}[c]));
-  const RN={BUY:"買い",SELL:"売り",STOP:"損切り",REJECT:"見送り",SKIP:"除外",WATCH:"様子見",WAIT:"待ち",NEW:"新着",ERROR:"エラー",NO_PRICE:"価格なし"};
+  const AG=[["scout","新着スカウト","#ea580c",50,7],["stop","損切り番","#dc2626",19,17],["trend","注目ランキング","#db2777",81,17],
+    ["tp","利確ラダー","#b45309",16,35],["whale","大口ウォッチ","#0d9488",84,35],["exec","約定・売却テスト","#16a34a",16,52],
+    ["kol","KOLウォッチ","#7c3aed",84,52],["sizer","資金ルール","#9333ea",16,69],["flow","買い手の流れ","#2563eb",84,69],
+    ["picker","点数づけ","#ca8a04",19,87],["bundle","まとめ買い検出","#be123c",50,94],["rug","安全チェック","#e11d48",81,87]];
+  const AB={scout:"SC",stop:"SL",trend:"TR",tp:"TP",whale:"WH",exec:"EX",kol:"KL",sizer:"SZ",flow:"HF",picker:"PK",bundle:"BH",rug:"RG"};
   const sec=t=>{const s=Math.max(0,Math.round(Date.now()/1000-t));return s<60?s+"秒前":s<3600?Math.floor(s/60)+"分前":Math.floor(s/3600)+"時間前"};
+  const hub=$("#hub");
+  hub.insertAdjacentHTML("beforeend",AG.map(([id,nm,c,x,y])=>`<div class="ag idle" id="ag-${id}" style="left:${x}%;top:${y}%;--glow:${c}22;border-color:var(--line)"><span class="ic" style="background:${c}">${AB[id]}</span><div class="bd"><div class="nm" style="color:${c}">${nm}</div><div class="tx">待機中</div></div></div>`).join(""));
+  $("#wires").innerHTML=AG.map(([id,,c,x,y])=>`<line id="w-${id}" class="wire" x1="${x}" y1="${y}" x2="50" y2="50" style="--c:${c}"/>`).join("");
   const seen=new Set();let first=true,last=null,fails=0;
+  const cls={BUY:"g",SELL:"b",STOP:"r",ERROR:"r",NO_PRICE:"r",REJECT:"d",SKIP:"d",WATCH:"o",WAIT:"o",NEW:"p",OK:"g",HOLD:"b"};
+  const lab={BUY:"BUY ",SELL:"SELL",STOP:"STOP",ERROR:"ERR ",NO_PRICE:"N/A ",REJECT:"SKIP",SKIP:"SKIP",WATCH:"WAIT",WAIT:"WAIT",NEW:"NEW "};
+  const hm=t=>{const d=new Date(t*1000);return d.toTimeString().slice(0,8)};
+  function spark(path,up){if(!path||path.length<2)return'<svg viewBox="0 0 100 40"></svg>';const mn=Math.min(...path),mx=Math.max(...path),
+    X=i=>i/(path.length-1)*100,Y=v=>36-(v-mn)/((mx-mn)||1)*32,pts=path.map((v,i)=>X(i).toFixed(1)+","+Y(v).toFixed(1)).join(" "),c=up?"#16a34a":"#e5484d";
+    return `<svg viewBox="0 0 100 40" preserveAspectRatio="none"><polygon points="0,40 ${pts} 100,40" fill="${c}" opacity=".1"/><polyline points="${pts}" fill="none" stroke="${c}" stroke-width="1.4" vector-effect="non-scaling-stroke"/></svg>`}
   function paint(){
-    if(!last){$("#lage").textContent=fails>2?"ライブ情報なし（iMacが新しい版で再起動すると表示されます）":"接続中…";$("#ldot").className="dot off";return}
+    if(!last){$("#corecap").innerHTML=`DESK <span>· ${fails>2?"ライブ情報なし":"接続中"}</span>`;return}
     const L=last,n=L.now||{},age=Date.now()/1000-L.ts,busy=n.icon!=="idle"&&n.icon!=="start";
-    $("#ldot").className=age>90?"dot off":"dot";
-    $("#lage").textContent=age>90?sec(L.ts)+"から動きがありません":"・ "+sec(L.ts)+"に更新";
-    $("#lnow").innerHTML=`<span class="k k-${esc(n.icon)}"></span>${n.sym?`<span class="sym">${esc(n.sym)}</span>`:""}${esc(n.text)}`;
-    $("#lsince").textContent=n.since?(busy?"この作業を始めて "+Math.max(0,Math.round(Date.now()/1000-n.since))+"秒":"待機 "+Math.max(0,Math.round(Date.now()/1000-n.since))+"秒"):"";
-    $("#lscan").className="scan"+(busy?"":" idle");
-    document.querySelectorAll("#lfeed .ag").forEach(e=>e.textContent=sec(+e.dataset.t));
+    $("#core").className="core"+(busy&&age<30?" busy":"");
+    $("#corecap").innerHTML=age>90?`DESK <span>· ${sec(L.ts)}から停止?</span>`:busy?`DESK <span>· ${n.sym?esc(n.sym)+" ":""}${n.agent?"作業中":"巡回中"}</span>`:`DESK <span>· 待機中</span>`;
+    const A=L.agents||{},now=Date.now()/1000;let on=0;
+    AG.forEach(([id,,c])=>{const a=A[id],el=$("#ag-"+id),w=$("#w-"+id);const act=a&&n.agent===id&&now-a.t<8,hot=a&&now-a.t<120;
+      if(a&&now-a.t<7200)on++;
+      el.className="ag"+(act?" act":"")+(a?"":" idle");el.style.borderColor=act?c:hot?c+"66":"var(--line)";
+      el.querySelector(".tx").textContent=a?a.x+" ・ "+sec(a.t):"待機中";
+      w.setAttribute("class","wire"+(act?" act":hot?" hot":""));w.style.stroke=act||hot?c:"";});
+    $("#online").textContent="● "+on+"/12 稼働（2時間以内）";
+    document.querySelectorAll("#term .tm").forEach(e=>{});
   }
   function render(L){
-    const st=L.status||{};
-    $("#lms").innerHTML=st.cash!=null?`<span>残高 <b>$${(+st.cash).toFixed(2)}</b></span><span>保有 <b>${st.open}</b></span><span>審査済 <b>${st.evaluated}</b></span><span>審査待ち <b>${st.waiting}</b></span><span>買い <b>${st.bought}</b></span><span>処理ステップ <b>${(L.steps||0).toLocaleString()}</b></span>`:"";
-    $("#lfeed").innerHTML=(L.feed||[]).map(f=>{const k=f.t+f.x,isNew=!first&&!seen.has(k);seen.add(k);
-      const s=f.s?(f.m?`<a class="sym" href="https://dexscreener.com/solana/${encodeURIComponent(f.m)}" target="_blank" rel="noopener">${esc(f.s)}</a>`:`<span class="sym">${esc(f.s)}</span>`):"";
-      return `<div class="lf${isNew?" new":""}"><span class="k k-${esc(f.i)}"></span><div style="flex:1;min-width:0">${s}${esc(f.x)}${f.r&&RN[f.r]?`<span class="r r-${esc(f.r)}">${RN[f.r]}</span>`:""}</div><span class="ag" data-t="${f.t}">${sec(f.t)}</span></div>`}).join("")||'<div class="small">まだ動きがありません</div>';
+    const st=L.status||{},H=st.head;
+    if(H){const r=H.balance/H.start;$("#hbal").textContent="$"+H.balance.toFixed(2);
+      $("#hstat").innerHTML=`${r.toFixed(2)}× from $${H.start} ・ ${H.n} trades ・ <span class="pos">${H.w}W</span>/<span class="neg">${H.l}L</span>`}
+    $("#hsub").innerHTML=`<span class="pos">●</span> 稼働中 ・ pump.fun卒業コイン ・ 練習（本物のお金は動かない） ・ 保有 ${H?H.open+"/"+H.max:"-"} ・ 審査待ち ${st.waiting??"-"}`;
+    const CH=st.charts||[];$("#chst").textContent=CH.length?CH.length+"件":"審査待ち";
+    $("#charts").innerHTML=CH.length?CH.map(c=>`<div class="cc${c.st==="保有中"?" hold":""}"><div class="h"><a href="https://dexscreener.com/solana/${encodeURIComponent(c.m)}" target="_blank" rel="noopener">$${esc(c.s||"?")}</a><span class="${c.chg>=0?"pos":"neg"}">${c.chg>=0?"+":""}${(c.chg*100).toFixed(1)}%</span></div>
+      <div class="px">${c.p?(+c.p).toPrecision(4):"-"}</div><div class="mc">流動性 $${c.liq?Math.round(c.liq/1000)+"K":"-"}</div>${spark(c.path,c.chg>=0)}<div class="ft"><span>${c.path.length}点</span><span>${esc(c.st)}</span></div></div>`).join("")
+      :'<div class="small">まだ追跡中のコインがありません（審査すると、ここに値動きが出ます）</div>';
+    const F=st.flow;
+    if(F&&F.ladder){const mx=Math.max(1,...F.ladder.map(r=>Math.max(r.buy,r.sell)));$("#ladsym").textContent="$"+F.symbol+" ・ "+sec(F.t);
+      $("#lad").innerHTML=F.ladder.map(r=>`<div class="lr"><span class="n">${r.ns}件</span><div class="tk s"><i style="width:${(r.sell/mx*100).toFixed(1)}%"></i></div><span>${esc(r.b)}</span></div>`).join("")+
+        `<div class="mid"><span class="${F.net>=0?"pos":"neg"}">${F.net>=0?"+":"-"}$${Math.abs(F.net).toLocaleString()}</span><span>直近10分の差し引き</span></div>`+
+        F.ladder.slice().reverse().map(r=>`<div class="lr"><span class="n">${r.nb}件</span><div class="tk b"><i style="width:${(r.buy/mx*100).toFixed(1)}%"></i></div><span>${esc(r.b)}</span></div>`).join("")+
+        `<div class="small" style="margin-top:6px">上の赤＝売り、下の緑＝買い（金額帯ごとの合計）</div>`;
+      const W=F.whales||[];$("#radsym").textContent="$"+F.symbol;
+      const dots=W.map((w,i)=>{const ang=(w.ago/600)*2*Math.PI-Math.PI/2,lr=Math.log10(Math.max(w.usd,500)),rad=12+34*Math.min(1,(lr-2.7)/2);
+        return `<circle cx="${(50+rad*Math.cos(ang)).toFixed(1)}" cy="${(50+rad*Math.sin(ang)).toFixed(1)}" r="${(1.6+Math.min(2.4,(lr-2.7)*1.4)).toFixed(1)}" fill="${w.k==="buy"?"#16a34a":"#e5484d"}" opacity=".85"/>`}).join("");
+      $("#radar").innerHTML=`<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="46" fill="none" stroke="#e3e6eb"/><circle cx="50" cy="50" r="31" fill="none" stroke="#e3e6eb"/><circle cx="50" cy="50" r="16" fill="none" stroke="#e3e6eb"/>
+        <line x1="4" y1="50" x2="96" y2="50" stroke="#eef0f3"/><line x1="50" y1="4" x2="50" y2="96" stroke="#eef0f3"/>
+        <g class="sweep"><path d="M50 50 L96 50 A46 46 0 0 0 82.5 17.5 Z" fill="#16a34a" opacity=".12"/><line x1="50" y1="50" x2="96" y2="50" stroke="#16a34a" stroke-width=".8"/></g>
+        ${dots}<circle cx="50" cy="50" r="4.5" fill="#121722"/><circle cx="50" cy="50" r="1.8" fill="#fff"/></svg>
+        <div class="lg"><span><span class="pos">●</span> 大口の買い</span><b class="pos">${F.wb}人</b></div><div class="lg"><span><span class="neg">●</span> 大口の売り</span><b class="neg">${F.ws}人</b></div>
+        <div class="lg"><span>差し引き $${esc(F.symbol)}</span><b class="${F.net>=0?"pos":"neg"}">${F.net>=0?"+":"-"}$${(Math.abs(F.net)/1000).toFixed(1)}k</b></div>
+        <div class="small">中心から遠いほど大きい買い・売り。1周＝10分（真上が今）</div>`}
+    else{$("#lad").innerHTML='<div class="small">コインを審査すると、そのコインの直近10分の売り買いがここに出ます</div>';$("#radar").innerHTML='<div class="small">審査中のコインの大口（1回$500以上）の動きがここに出ます</div>'}
+    const FE=(L.feed||[]).slice(0,40);$("#lcount").textContent=(L.steps||0).toLocaleString()+" steps";
+    const n=L.now||{};
+    $("#term").innerHTML=`<div class="l cur">&gt; ${n.sym?esc(n.sym)+" ":""}${esc(n.text||"")}</div>`+FE.map(f=>{const k=f.t+f.x,isNew=!first&&!seen.has(k);seen.add(k);
+      return `<div class="l${isNew?" new":""}"><span class="tm">${hm(f.t)}</span> <span class="${cls[f.r]||"b"}">${lab[f.r]||"... "}</span> ${f.s?`<span class="b">${esc(f.s)}</span> `:""}${esc(f.x)}</div>`}).join("");
     first=false;
   }
   async function poll(){

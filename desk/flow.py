@@ -22,6 +22,8 @@ JUP_QUOTE = "https://lite-api.jup.ag/swap/v1/quote"
 SOL = "So11111111111111111111111111111111111111112"
 
 _last_call = {"t": 0.0}
+LADDER = [(2000, float("inf"), "$2k以上"), (500, 2000, "$500〜2k"), (200, 500, "$200〜500"),
+          (50, 200, "$50〜200"), (0, 50, "$50未満")]
 
 
 def _gt(path):
@@ -101,6 +103,14 @@ def analyze(trades, now=None, creator=None, kols=None, window_min=None):
         usd = sum(y["usd"] for y in grp)
         if usd > burst_usd:
             burst_usd, burst_w = usd, len({y["wallet"] for y in grp})
+    ladder = []
+    for lo, hi, label in LADDER:
+        b = [x for x in buys if lo <= x["usd"] < hi]
+        sl = [x for x in sells if lo <= x["usd"] < hi]
+        ladder.append({"b": label, "buy": round(sum(x["usd"] for x in b)), "sell": round(sum(x["usd"] for x in sl)),
+                       "nb": len(b), "ns": len(sl)})
+    big = sorted((x for x in recent if x["usd"] >= C.WHALE_BUY_USD), key=lambda x: -x["t"])[:40]
+    whale_list = [{"ago": round(now - x["t"]), "usd": round(x["usd"]), "k": x["kind"]} for x in big]
     kols = kols or {}
     if not isinstance(kols, dict):
         kols = {k: {"tier": "A", "name": k[:6]} for k in kols}
@@ -115,6 +125,8 @@ def analyze(trades, now=None, creator=None, kols=None, window_min=None):
         "kol_buys": sorted({x["wallet"] for x in buys if x["wallet"] in kols}),
         "kol_names": sorted({kols[x["wallet"]]["name"] for x in buys if x["wallet"] in kols}),
         "kol_a": len({x["wallet"] for x in buys if kols.get(x["wallet"], {}).get("tier") == "A"}),
+        "ladder": ladder, "whale_list": whale_list,
+        "whale_sellers": len({x["wallet"] for x in sells if x["usd"] >= C.WHALE_BUY_USD}),
         "dev_sold_usd": round(sum(x["usd"] for x in trades if creator and x["wallet"] == creator
                                   and x["kind"] == "sell")),
     }
