@@ -1,0 +1,133 @@
+"""Builds site/index.html (phone-friendly report) from data/*.json."""
+import json
+import time
+from pathlib import Path
+
+ROOT = Path(__file__).parent
+DATA = ROOT / "data"
+SITE = ROOT / "site"
+
+
+def load(name, default):
+    try:
+        return json.loads((DATA / name).read_text())
+    except Exception:
+        return default
+
+
+def main():
+    wallets = load("wallets.json", {})
+    tokens = load("tokens.json", [])
+    meta = load("meta.json", {})
+    # wallets seen early on 2+ coins are worth listing; keep the page light
+    ranked = sorted(((w, v) for w, v in wallets.items() if v["count"] >= 2),
+                    key=lambda x: (-x[1]["count"], -x[1]["block0"]))[:400]
+    payload = {
+        "generated": int(time.time()),
+        "meta": meta,
+        "walletsTotal": len(wallets),
+        "ranked": [[w, v["count"], v["block0"], v["last"], v["recent"]] for w, v in ranked],
+        # full lookup table for the search box: wallet -> [count, block0]
+        "all": {w: [v["count"], v["block0"]] for w, v in wallets.items()},
+        "tokens": tokens[:60],
+    }
+    SITE.mkdir(exist_ok=True)
+    html = TEMPLATE.replace("__DATA__", json.dumps(payload, separators=(",", ":"),
+                                                   ensure_ascii=False).replace("</", "<\\/"))
+    (SITE / "index.html").write_text(html, encoding="utf-8")
+    print("site/index.html written,", len(html) // 1024, "KB")
+
+
+TEMPLATE = r"""<!DOCTYPE html>
+<html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>狙撃ボット・レーダー</title>
+<style>
+:root{--bg:#0f1115;--card:#181b22;--line:#262a33;--tx:#e8eaf0;--mut:#8b91a0;--red:#ff5d5d;--org:#ffa53d;--grn:#3ddc84;--acc:#6aa8ff}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.5 -apple-system,BlinkMacSystemFont,"Hiragino Sans",sans-serif;padding:16px 14px 60px;max-width:640px;margin:auto}
+h1{font-size:20px;margin:4px 0 2px}.sub{color:var(--mut);font-size:12px;margin-bottom:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:14px}
+h2{font-size:15px;margin:0 0 10px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.stat{background:#11141a;border-radius:10px;padding:10px;text-align:center}.stat b{display:block;font-size:20px}.stat span{font-size:11px;color:var(--mut)}
+input{width:100%;padding:12px;border-radius:10px;border:1px solid var(--line);background:#0b0d11;color:var(--tx);font-size:14px}
+button{margin-top:8px;width:100%;padding:12px;border:0;border-radius:10px;background:var(--acc);color:#04122a;font-weight:700;font-size:15px}
+#res{margin-top:10px;font-size:14px}
+.verdict{padding:12px;border-radius:10px;font-weight:700}
+.v-red{background:#3a1416;color:var(--red)}.v-org{background:#3a2810;color:var(--org)}.v-grn{background:#0f2e1d;color:var(--grn)}
+.tabs{display:flex;gap:6px;margin-bottom:10px}.tab{flex:1;padding:8px;border-radius:9px;background:#11141a;text-align:center;font-size:13px;color:var(--mut)}.tab.on{background:var(--acc);color:#04122a;font-weight:700}
+.row{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line)}.row:first-child{border-top:0}
+.addr{font-family:ui-monospace,Menlo,monospace;font-size:12.5px;color:var(--acc);text-decoration:none}
+.tag{font-size:11px;padding:2px 7px;border-radius:99px;white-space:nowrap}.t-red{background:#3a1416;color:var(--red)}.t-org{background:#3a2810;color:var(--org)}.t-pur{background:#2a1d3d;color:#c49bff}
+.grow{flex:1;min-width:0}.small{font-size:11.5px;color:var(--mut)}.num{font-weight:700;font-size:16px;min-width:34px;text-align:right}
+.copy{background:none;border:1px solid var(--line);color:var(--mut);width:auto;margin:0;padding:4px 8px;font-size:11px;font-weight:400}
+.help{font-size:12.5px;color:var(--mut)}.help b{color:var(--tx)}
+</style></head><body>
+<h1>🎯 狙撃ボット・レーダー</h1>
+<div class="sub" id="upd"></div>
+
+<div class="card"><div class="stats">
+<div class="stat"><b id="sTok">-</b><span>調べたコイン</span></div>
+<div class="stat"><b id="sWal">-</b><span>早撃ち財布</span></div>
+<div class="stat"><b id="sBot">-</b><span>ボット濃厚</span></div>
+</div></div>
+
+<div class="card"><h2>🔎 この財布、真似して大丈夫？</h2>
+<input id="q" placeholder="財布アドレスを貼り付け" autocomplete="off" autocapitalize="off" spellcheck="false">
+<button id="go">チェック</button><div id="res"></div></div>
+
+<div class="card">
+<div class="tabs"><div class="tab on" data-t="w">要注意の財布</div><div class="tab" data-t="t">最近のコイン</div></div>
+<div id="list"></div></div>
+
+<div class="card help"><h2>見方</h2>
+<b>同ブロック買い</b>：コインが作られたのと同じ瞬間に買った財布。作った本人の仲間（まとめ買い）の可能性が高い。<br>
+<b>狙撃</b>：作られてから約1秒以内（3ブロック以内）に買った財布。<br>
+<b>ボット濃厚</b>：いくつものコインで早撃ちしている財布。真似しても同じ値段では買えないので<b>コピー対象から外す</b>。<br>
+※記録に無い＝「観測した範囲では早撃ちしていない」という意味で、安全の保証ではありません。</div>
+
+<script>
+const D=__DATA__;
+const $=s=>document.querySelector(s);
+const ago=t=>{const m=Math.round((Date.now()/1000-t)/60);return m<60?m+"分前":m<1440?Math.round(m/60)+"時間前":Math.round(m/1440)+"日前"};
+const short=a=>a.slice(0,5)+"…"+a.slice(-4);
+const link=a=>`<a class="addr" href="https://solscan.io/account/${a}" target="_blank" rel="noopener">${short(a)}</a>`;
+const level=c=>c>=5?["t-red","ボット濃厚"]:c>=3?["t-org","狙撃の疑い"]:["t-org","早撃ち2回"];
+$("#upd").textContent=(D.meta.last_run?"最終更新 "+ago(D.meta.last_run)+" ・ ":"")+"実行 "+(D.meta.runs||0)+" 回";
+$("#sTok").textContent=(D.meta.tokens_total||0).toLocaleString();
+$("#sWal").textContent=D.walletsTotal.toLocaleString();
+$("#sBot").textContent=D.ranked.filter(r=>r[1]>=5).length;
+
+function check(){
+  const a=$("#q").value.trim();if(!a){return}
+  const h=D.all[a];let v;
+  if(!h) v=`<div class="verdict v-grn">✅ 記録なし</div><div class="small" style="margin-top:6px">調べた${(D.meta.tokens_total||0).toLocaleString()}コインの中では、早撃ちしていません（安全の保証ではありません）。</div>`;
+  else{const[c,b]=h;const cls=c>=5?"v-red":"v-org";
+    v=`<div class="verdict ${cls}">${c>=5?"🚫 ボット濃厚 — コピー対象外":c>=3?"⚠️ 狙撃の疑い":"⚠️ 早撃ちあり"}</div>
+    <div class="small" style="margin-top:6px">早撃ち ${c} 回（うち同ブロック買い ${b} 回）${b>=2?"<br>→ コイン作者のまとめ買い用の財布の可能性あり":""}</div>`}
+  $("#res").innerHTML=v+`<div class="small" style="margin-top:6px">${link(a)}</div>`;
+}
+$("#go").onclick=check;$("#q").addEventListener("keydown",e=>{if(e.key==="Enter")check()});
+
+function wList(){
+  if(!D.ranked.length) return '<div class="small">まだデータがありません。何回か実行されると溜まっていきます。</div>';
+  return D.ranked.slice(0,150).map(([a,c,b,l,r])=>{const[t,n]=level(c);
+    return `<div class="row"><div class="num">${c}</div><div class="grow">${link(a)} <span class="tag ${t}">${n}</span>${b>=2?' <span class="tag t-pur">同ブロック常連</span>':''}
+    <div class="small">最近：${r.slice(0,4).join("・")} ／ ${ago(l)}</div></div><button class="copy" data-a="${a}">コピー</button></div>`}).join("");
+}
+function tList(){
+  if(!D.tokens.length) return '<div class="small">まだデータがありません。</div>';
+  return D.tokens.map(t=>`<div class="row"><div class="grow"><b>${(t.symbol||"?").replace(/</g,"")}</b> <span class="small">${(t.name||"").replace(/</g,"").slice(0,24)}</span>
+    <div class="small">同ブロック買い ${t.block0} ・ 狙撃 ${t.snipers} ・ ${ago(t.time)}</div></div>
+    ${t.block0>=3?'<span class="tag t-red">まとめ買い</span>':t.snipers>=5?'<span class="tag t-org">狙撃多</span>':''}
+    <a class="addr" href="https://pump.fun/coin/${t.mint}" target="_blank" rel="noopener">開く</a></div>`).join("");
+}
+let tab="w";const draw=()=>{$("#list").innerHTML=tab==="w"?wList():tList()};
+document.querySelectorAll(".tab").forEach(el=>el.onclick=()=>{document.querySelectorAll(".tab").forEach(x=>x.classList.remove("on"));el.classList.add("on");tab=el.dataset.t;draw()});
+$("#list").addEventListener("click",e=>{const b=e.target.closest(".copy");if(!b)return;navigator.clipboard?.writeText(b.dataset.a).then(()=>{b.textContent="✓"}).catch(()=>{$("#q").value=b.dataset.a;check();scrollTo(0,0)})});
+draw();
+</script></body></html>
+"""
+
+if __name__ == "__main__":
+    main()
