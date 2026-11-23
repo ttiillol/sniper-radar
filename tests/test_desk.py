@@ -998,3 +998,50 @@ def test_journal_ignores_trades_from_an_archived_book():
     s2 = P.new_state()
     s2["book_start"] = int(__import__("time").time()) + 1
     assert J.trades(s) and J.trades(s2) == []
+
+
+# ------------------------------------------------------------------ conviction sizing (10% / 20% / 50%)
+def _perfect_inputs():
+    pr = dict(pair(liq=400_000, m5=6.0, h1=45), pairAddress="POOL")
+    flow = {"pressure": 0.72, "burst_wallets": 3}
+    return pr, {"holders": 900}, flow
+
+
+def test_conviction_tiers():
+    pr, facts, flow = _perfect_inputs()
+    assert A.conviction(pr, facts, flow, 70)[0] == "max"
+    for bad in (dict(pr, priceChange={"m5": 20, "h1": 45}), dict(pr, liquidity={"usd": 90_000})):
+        assert A.conviction(bad, facts, flow, 70)[0] == "normal"               # one missing item -> not perfect
+    assert A.conviction(pr, {"holders": 120}, flow, 85)[0] == "strong"
+    assert A.conviction(pr, facts, {"pressure": 0.72, "burst_wallets": 0}, 70, kol_a=1)[0] == "max"
+    assert A.conviction(pr, {"holders": 120}, {"pressure": 0.5}, 90)[0] == "normal"
+
+
+def test_conviction_sizes_and_caps():
+    pr, _, _ = _perfect_inputs()
+    s = P.new_state()
+    assert A.risk(s, pr, NOW)["size"] == pytest.approx(100)
+    assert A.risk(s, pr, NOW, tier="strong")["size"] == pytest.approx(200)
+    r = A.risk(s, pr, NOW, tier="max")
+    assert r["ok"] and r["size"] == pytest.approx(500) and r["gap"] == C.WORST_CASE_GAP_DEEP
+    thin = dict(pr, liquidity={"usd": 60_000})                                 # $500 would move it > 1%
+    assert A.risk(s, thin, NOW, tier="max")["size"] == pytest.approx(0.01 * 30_000 / 0.99)
+    s["daily"][P.hst_day(NOW)] = -40.0                                        # $60 room: $500 x 15% = $75 too big
+    assert not A.risk(s, pr, NOW, tier="max")["ok"] and A.risk(s, pr, NOW)["ok"]
+
+
+def test_perfect_momentum_buys_big(monkeypatch):
+    pr, _, _ = _perfect_inputs()
+    t = NOW
+    trades = {"v": [_tr(t - 10, "buy", 13_000, "A"), _tr(t - 40, "buy", 14_000, "B"), _tr(t - 70, "buy", 14_000, "C")] +
+                   [_tr(t - 90 - i, "buy", 200, f"n{i}") for i in range(40)] + [_tr(t - 100, "sell", 900, "s")]}
+    d, s, st, _ = _scalp_desk(monkeypatch, pr=pr, trades=trades)
+    d.rug = lambda mint, p, state, radar, now: _rug_ok(mint, p, state, radar)
+    d.cycle(t)
+    pos = s["positions"]["M"]
+    assert pos["tier"] == "max" and pos["cost"] == pytest.approx(500) and pos["gap"] == C.WORST_CASE_GAP_DEEP
+
+
+def _rug_ok(mint, p, state, radar):
+    return A.V(True, reasons=["全項目合格"], notes=[], creator="DEV",
+               facts={"liq": (p.get("liquidity") or {}).get("usd"), "holders": 900, "creator": "DEV", "top10_pct": 12.0})

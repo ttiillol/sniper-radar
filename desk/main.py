@@ -357,11 +357,17 @@ class Desk:
                 return "watch"
             return reject("Sniper", sn["reasons"] if not sn["ok"] else [f"点数{score}（{C.MIN_ENTRY_SCORE}未満）"],
                           score=score, facts=rg["facts"], **why_x)
-        rk = A.risk(self.s, pair, now)
+        tier, tier_why = ("normal", [])
+        if C.STRATEGY == "scalp":
+            tier, tier_why = A.conviction(pair, rg["facts"], fl, score, (fl or {}).get("kol_a", 0))
+        rk = A.risk(self.s, pair, now, tier=tier)
+        if not rk["ok"] and tier != "normal":               # too big for today's loss room -> try normal size
+            tier, tier_why = "normal", []
+            rk = A.risk(self.s, pair, now)
         if not rk["ok"]:
             return reject("Risk", rk["reasons"], score=score, facts=rg["facts"], **why_x)
         L.note("picker", f"{sym} {score}点（合格{C.MIN_ENTRY_SCORE}）", sym, "OK")
-        L.note("sizer", f"${rk['size']:.2f}（残高の{rk['size'] / max(self.s['cash'], 1e-9) * 100:.0f}%）", sym, "OK")
+        L.note("sizer", f"{A.TIER_JA[tier]} ${rk['size']:.0f}（{'・'.join(tier_why) or '資産の10%'}）", sym, "OK")
         L.step("work", "売却テスト中（本当に売れるか見積もりを取る・注文は出さない）…", sym, mint, agent="exec",
                note=f"{sym} 売却テスト中…")
         sc = self.sell_check(mint, rk["size"]) if C.FLOW_ON else {"ok": None, "reason": "売却テスト: オフ"}
@@ -370,7 +376,7 @@ class Desk:
         why["sell"] = sc["reason"]
         price = S.pair_price(pair)
         fill, slip = P.paper_buy(self.s, mint, sym, rk["size"], price, rg["facts"]["liq"],
-                                 f"点数{score}", now)
+                                 f"点数{score}・{A.TIER_JA[tier]}", now, tier=tier, gap=rk.get("gap"))
         cand["status"] = "bought"
         cand.pop("reentry", None)
         day = P.hst_day(now)
@@ -383,13 +389,14 @@ class Desk:
         T.start(self.s, mint, sym, price, rg["facts"]["liq"], "BUY", [], score, now, facts=rg["facts"],
                 pool=(pair or {}).get("pairAddress"))
         f = rg["facts"]
-        N.send_async(f"BUY {sym}  ${rk['size']:.2f}",
+        N.send_async(f"BUY {sym}  ${rk['size']:.2f}" + ("" if tier == "normal" else f"  [{A.TIER_JA[tier]}]"),
+                     ("".join(t + "\n" for t in tier_why)) +
                      f"点数{score} ・ 流動性 ${f.get('liq', 0):,.0f} ・ 上位10 {f.get('top10_pct')}%\n"
                      f"{' / '.join((sn['reasons'] + hy['reasons'])[:3])}\n（練習・本物のお金は動きません）",
                      tags=["green_circle"], click=f"https://dexscreener.com/solana/{mint}")
         P.log_decision("entry", mint, sym, "BUY", f"点数{score}・{rk['reasons'][0]}", price=fill,
                        facts=rg["facts"], **why)
-        L.step("buy", f"練習買い ${rk['size']:.2f} ・ 点数{score} ・ 全審査に合格", sym, mint, "BUY", agent="exec",
+        L.step("buy", f"練習買い ${rk['size']:.2f}（{A.TIER_JA[tier]}） ・ 点数{score} ・ 全審査に合格", sym, mint, "BUY", agent="exec",
                note=f"{sym} 練習買い ${rk['size']:.2f}・すべり{slip * 100:.1f}%")
         return "bought"
 

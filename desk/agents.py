@@ -335,7 +335,34 @@ def sniper(pair):
 
 
 # ============================================================ 2. Risk (veto)
-def risk(state, pair, now=None):
+def conviction(pair, facts, flow, score, kol_a=0):
+    """How sure are we? 'max' only when EVERY item of the perfect-momentum checklist holds."""
+    pc = pair.get("priceChange") or {}
+    m5, h1 = float(pc.get("m5") or 0), float(pc.get("h1") or 0)
+    liq = (pair.get("liquidity") or {}).get("usd") or 0
+    p = (flow or {}).get("pressure")
+    checks = [
+        (C.PERFECT_M5[0] <= m5 <= C.PERFECT_M5[1], f"5分 {m5:+.1f}%"),
+        (h1 >= C.PERFECT_H1, f"1時間 {h1:+.0f}%"),
+        (p is not None and p >= C.PERFECT_PRESSURE, f"買い{(p or 0) * 100:.0f}%"),
+        ((flow or {}).get("burst_wallets", 0) >= C.PERFECT_WHALES or kol_a > 0,
+         f"大口{(flow or {}).get('burst_wallets', 0)}人/KOL-A {kol_a}人"),
+        (liq >= C.PERFECT_MIN_LIQ, f"流動性 ${liq:,.0f}"),
+        ((facts.get("holders") or 0) >= C.PERFECT_MIN_HOLDERS, f"保有者 {facts.get('holders')}人"),
+    ]
+    missing = [label for ok, label in checks if not ok]
+    if not missing:
+        return "max", ["完璧な勢い（" + "・".join(l for _, l in checks[:4]) + "）"]
+    if score >= C.STRONG_SCORE and p is not None and p >= C.STRONG_PRESSURE:
+        return "strong", [f"強い勢い（点数{score}・買い{p * 100:.0f}%）"]
+    return "normal", []
+
+
+TIER_PCT = {"normal": None, "strong": "SIZE_STRONG_PCT", "max": "SIZE_MAX_PCT"}
+TIER_JA = {"normal": "通常", "strong": "強い", "max": "完璧"}
+
+
+def risk(state, pair, now=None, tier="normal"):
     now = now or time.time()
     if state.get("halted"):
         return V(False, reasons=[f"停止中: {state['halted']}"])
@@ -350,7 +377,12 @@ def risk(state, pair, now=None):
         state["halted"] = f"累計損失 ${-state['realized']:.2f}（上限${C.TOTAL_LOSS_LIMIT:.0f}）"
         return V(False, reasons=[state["halted"]])
     equity = state["cash"] + sum(p["cost"] for p in state["positions"].values())
-    size = equity * C.MAX_POSITION_PCT                   # SIZER: a fixed share of the whole book
+    pct = getattr(C, TIER_PCT[tier]) if TIER_PCT.get(tier) else C.MAX_POSITION_PCT
+    size = equity * pct                                  # SIZER: a share of the whole book, by conviction
+    liq0 = (pair.get("liquidity") or {}).get("usd") or 0
+    if liq0 > 0:                                         # don't move the price more than 1% ourselves
+        reserve = liq0 / 2.0
+        size = min(size, C.MAX_ENTRY_IMPACT * reserve / (1 - C.MAX_ENTRY_IMPACT)) if tier != "normal" else size
     if C.SMALL_MODE:
         size = min(max(size, C.SMALL_MIN), C.SMALL_MAX)
     size = min(size, state["cash"])
@@ -360,12 +392,14 @@ def risk(state, pair, now=None):
     slip = P.slippage(size, liq)
     if slip > C.MAX_SLIPPAGE:
         return V(False, reasons=[f"スリッページ見込み {slip*100:.2f}%（2%超）"])
-    worst_new = size * C.WORST_CASE_GAP
+    gap = C.WORST_CASE_GAP_DEEP if liq >= C.PERFECT_MIN_LIQ else C.WORST_CASE_GAP
+    worst_new = size * gap
     room_day = C.DAILY_LOSS_LIMIT + dpl - P.worst_case_open(state)
     room_total = C.TOTAL_LOSS_LIMIT + state["realized"] - P.worst_case_open(state)
     if worst_new > room_day or worst_new > room_total:
         return V(False, reasons=[f"急落時の最大損失 ${worst_new:.2f} が残りの損失枠を超える"])
-    return V(True, reasons=[f"${size:.2f}で可（スリッページ {slip*100:.2f}%）"], size=size, slip=slip)
+    return V(True, reasons=[f"${size:.2f}で可（{TIER_JA[tier]}・スリッページ {slip*100:.2f}%）"], size=size, slip=slip,
+             tier=tier, gap=gap)
 
 
 # ============================================================ 6. Exit

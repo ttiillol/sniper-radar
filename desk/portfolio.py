@@ -116,16 +116,16 @@ def day_pnl(s, ts=None):
 
 def worst_case_open(s):
     """Loss if every open position gaps down WORST_CASE_GAP (stop-loss can't save us)."""
-    return sum(p["cost"] * C.WORST_CASE_GAP for p in s["positions"].values())
+    return sum(p["cost"] * p.get("gap", C.WORST_CASE_GAP) for p in s["positions"].values())
 
 
-def paper_buy(s, mint, symbol, usd, price, liq, reason, ts=None):
+def paper_buy(s, mint, symbol, usd, price, liq, reason, ts=None, tier="normal", gap=None):
     slip = slippage(usd, liq)
     fill = price * (1 + slip) * (1 + C.FEE_PCT)
     s["cash"] -= usd
     s["positions"][mint] = {"symbol": symbol, "cost": usd, "qty": usd / fill, "entry": fill,
                             "peak": fill, "opened": int(ts or time.time()), "half_sold": False,
-                            "liq": liq}
+                            "liq": liq, "tier": tier, "gap": gap if gap is not None else C.WORST_CASE_GAP}
     s["stats"]["bought"] += 1
     log_trade(mint, symbol, "BUY", usd, fill, slip, 0.0, reason)
     return fill, slip

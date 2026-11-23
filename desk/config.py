@@ -17,7 +17,20 @@ START_CASH = 1000.0                 # paper capital (USD) - new book from 2026-1
 BOOK = "scalp-1000-2026-11-23"      # changing this starts a fresh paper book (old one is archived)
 SMALL_MODE = False                  # was True ($5-10 per trade) for the $100 book
 SMALL_MIN, SMALL_MAX = 5.0, 10.0
-MAX_POSITION_PCT = 0.10             # design said up to 40%; capped at 10% (gap losses)
+MAX_POSITION_PCT = 0.10             # normal trade: 10% of the book
+# --- conviction sizing (owner: "big only on perfect momentum, otherwise 10-20%")
+SIZE_STRONG_PCT = 0.20              # score >= STRONG_SCORE and buy pressure >= STRONG_PRESSURE
+STRONG_SCORE = 80
+STRONG_PRESSURE = 0.60
+SIZE_MAX_PCT = 0.50                 # "perfect momentum": every item of the checklist below
+PERFECT_M5 = (3.0, 15.0)            # +3..15% in 5 minutes
+PERFECT_H1 = 20.0                   # +20% or more in 1 hour
+PERFECT_PRESSURE = 0.65             # buyers' share of USD volume (10 min)
+PERFECT_WHALES = 3                  # 3+ whales within 2 minutes, OR a tier-A KOL buy
+PERFECT_MIN_LIQ = 150_000
+PERFECT_MIN_HOLDERS = 300
+MAX_ENTRY_IMPACT = 0.01             # never buy so much that our own buy moves the price more than 1%
+WORST_CASE_GAP_DEEP = 0.15          # pools with $150k+ liquidity: assume a 15% gap past the stop (else 25%)
 MAX_OPEN_POSITIONS = 5
 DAILY_LOSS_LIMIT = 100.0            # 10% of the book: no new buys for the rest of the Hawaii day
 TOTAL_LOSS_LIMIT = 300.0            # 30% of the book: full stop
