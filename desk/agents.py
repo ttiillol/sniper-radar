@@ -90,6 +90,8 @@ def rug_check(mint, pair, state, radar, now=None, rpc=None, rc=None, gp=None, ho
     if isinstance(prev, dict) and prev.get("mint") != mint and now - (prev.get("t") or 0) < 7 * 86400:
         fails.append(f"同じ名前 {sym} の別コインが7日以内に卒業済み（コピー銘柄の疑い）")
 
+    rc = rc if rc is not None else S.rugcheck(mint)
+
     # --- on-chain: authorities, holders
     try:
         mi = minfo or S.mint_info(mint, rpc)
@@ -99,7 +101,7 @@ def rug_check(mint, pair, state, radar, now=None, rpc=None, rc=None, gp=None, ho
         if mi["freeze_authority"]:
             fails.append("freeze権限が放棄されていない")
         supply = mi["supply"]
-        hs = holders if holders is not None else S.top_holders(mint, rpc)
+        hs = holders if holders is not None else S.top_holders(mint, rpc, rc)
         wallets = [h for h in hs if h["is_wallet"]][:10]
         top10 = sum(h["amount"] for h in wallets) / supply if supply else 1
         facts["top10_pct"] = round(top10 * 100, 1)
@@ -116,7 +118,6 @@ def rug_check(mint, pair, state, radar, now=None, rpc=None, rc=None, gp=None, ho
         supply, hs = None, []
 
     # --- RugCheck: creator holding, LP lock, danger flags
-    rc = rc if rc is not None else S.rugcheck(mint)
     creator = None
     if not rc:
         fails.append("データ不足: RugCheckが応答しない")

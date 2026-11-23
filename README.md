@@ -45,5 +45,5 @@ python -m pytest -q tests
 また GitHub Actions は1時間ごとに数分〜十数分止まるため、本番では常時動くサーバー（VPS）が必要です。
 
 ## 設定
-- `RPC_URL`（GitHub の Secrets）: Helius などの Solana RPC。未設定なら公共RPC（混みやすい）
+- `RPC_URL`（GitHub の Secrets・任意）: Helius などの Solana RPC。未設定でも、キー不要の公共窓口（PublicNode → Solana公式）を自動で切り替えて使う。大口保有者の一覧が取れない窓口では RugCheck の保有者データで代用
 - Helius 無料枠（月100万クレジット）は、レーダーとデスクの合計で90万を超えると自動停止

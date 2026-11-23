@@ -26,8 +26,15 @@ import requests
 import websockets
 
 PUMPPORTAL_WS = "wss://pumpportal.fun/api/data"
-RPC_URL = os.environ.get("RPC_URL") or "https://api.mainnet-beta.solana.com"
+# Keyless public endpoints, tried in order (tested 2026-11-23 from a home connection):
+#   publicnode: signatures / transactions (incl. v1) / accounts OK, largest-holders blocked
+#   mainnet-beta: everything but rate-limited (429) -> used as a fallback
+PUBLIC_RPCS = ["https://solana-rpc.publicnode.com", "https://api.mainnet-beta.solana.com"]
+RPC_URL = os.environ.get("RPC_URL") or ""
+RPC_URLS = ([RPC_URL] if RPC_URL else []) + PUBLIC_RPCS
 RPC_KIND = "helius" if "helius" in RPC_URL else "public"
+_cool = {}            # endpoint -> retry-after timestamp
+_blocked = set()      # (endpoint, method) pairs the endpoint refuses
 DATA = Path(__file__).parent / "data"
 WALLETS_FILE = DATA / "wallets.json"
 TOKENS_FILE = DATA / "tokens.json"
@@ -41,7 +48,7 @@ MAX_EARLY_TX = 40            # inspect at most this many earliest transactions p
 KEEP_TOKENS = 400            # recent coins kept in tokens.json
 SAVE_EVERY = 10              # write files every N checked coins
 # Helius free = 10 req/s; public RPC is stricter. Stay under both.
-MIN_INTERVAL = 0.13 if RPC_KIND == "helius" else 0.35
+MIN_INTERVAL = 0.13 if RPC_KIND == "helius" else 0.25
 MONTHLY_BUDGET = int(os.environ.get("MONTHLY_BUDGET") or 900_000)   # credits (Helius free = 1M)
 
 
@@ -66,46 +73,72 @@ def _pace():
         _last_call[0] = time.time()
 
 
+def _host(u):
+    return u.split("//")[-1].split("/")[0].split("?")[0]
+
+
+def _one(url, method, params):
+    """One request to one endpoint. Returns result, or raises RpcError(reason)."""
+    _pace()
+    CALLS["n"] += (10 if method == "getTransactionsForAddress" else 1) if "helius" in url else 0
+    CALLS["all"] = CALLS.get("all", 0) + 1
+    try:
+        r = requests.post(url, json={"jsonrpc": "2.0", "id": 1, "method": method, "params": params}, timeout=20)
+    except requests.Timeout:
+        raise RpcError("timeout")
+    except requests.RequestException:
+        raise RpcError("network")
+    if r.status_code == 429:
+        ERR_SAMPLES.setdefault("rate_limited", f"{_host(url)} {method}: HTTP 429")
+        raise RpcError("rate_limited")
+    if r.status_code in (401, 403):
+        if "helius" in url:
+            raise RpcError("auth", f"HTTP {r.status_code} (API key wrong or credits used up?)")
+        raise RpcError("blocked", f"HTTP {r.status_code}")
+    if r.status_code >= 500:
+        raise RpcError("server_error")
+    try:
+        j = r.json()
+    except ValueError:
+        raise RpcError("bad_response")
+    if "error" not in j:
+        return j["result"]
+    code = (j["error"] or {}).get("code")
+    msg = str((j["error"] or {}).get("message", ""))[:160]
+    if code == -32015:
+        raise RpcError("tx_version", msg)
+    low = msg.lower()
+    if code in (429, -32429, -32029) or "rate" in low or "too many" in low:
+        raise RpcError("rate_limited", msg)
+    if "blocked" in low or "not available" in low or "not allowed" in low or code == -32601:
+        raise RpcError("blocked", msg)
+    if "helius" in url and ("credit" in low or "limit" in low):
+        raise RpcError("budget", msg)
+    ERR_SAMPLES.setdefault("rpc_error", f"{_host(url)} {method}: {code} {msg}")
+    raise RpcError("rpc_error", msg)
+
+
 def rpc(method, params, retries=3):
+    """Try each endpoint; skip ones that refuse this method or are cooling down after a 429."""
     last = "other"
     for attempt in range(retries):
-        _pace()
-        CALLS["n"] += 10 if method == "getTransactionsForAddress" else 1   # credit cost
-        try:
-            r = requests.post(RPC_URL, json={"jsonrpc": "2.0", "id": 1, "method": method,
-                                             "params": params}, timeout=20)
-        except requests.Timeout:
-            last = "timeout"
-        except requests.RequestException:
-            last = "network"
-        else:
-            if r.status_code == 429:
-                last = "rate_limited"
-                ERR_SAMPLES.setdefault(last, f"{method}: HTTP 429")
-            elif r.status_code in (401, 403):
-                raise RpcError("auth", f"HTTP {r.status_code} (API key wrong or credits used up?)")
-            elif r.status_code >= 500:
-                last = "server_error"
-            else:
-                try:
-                    j = r.json()
-                except ValueError:
-                    last = "bad_response"
-                else:
-                    if "error" not in j:
-                        return j["result"]
-                    code = (j["error"] or {}).get("code")
-                    msg = str((j["error"] or {}).get("message", ""))[:160]
-                    if code == -32015:
-                        raise RpcError("tx_version", msg)       # caller retries with a newer version
-                    if code in (429, -32429) or "rate" in msg.lower():
-                        last = "rate_limited"
-                    elif "credit" in msg.lower() or "limit" in msg.lower():
-                        raise RpcError("budget", msg)
-                    else:
-                        last = "rpc_error"
-                    ERR_SAMPLES.setdefault(last, f"{method}: {code} {msg}")
-        time.sleep(1.5 * (attempt + 1) + random.random())
+        for url in RPC_URLS:
+            if (url, method) in _blocked or _cool.get(url, 0) > time.time():
+                continue
+            try:
+                return _one(url, method, params)
+            except RpcError as e:
+                last = e.reason
+                if e.reason in ("tx_version", "auth", "budget"):
+                    raise
+                if e.reason == "blocked":
+                    _blocked.add((url, method))
+                    ERR_SAMPLES.setdefault("blocked", f"{_host(url)} は {method} 不可（別の窓口へ）")
+                elif e.reason == "rate_limited":
+                    _cool[url] = time.time() + 5 + 5 * attempt
+        if all((u, method) in _blocked for u in RPC_URLS):
+            raise RpcError("blocked")
+        time.sleep(1.0 * (attempt + 1) + random.random())
     raise RpcError(last)
 
 

@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: [".github/workflows/scan.yml", "scanner.py", "build_page.py", "desk/**"]
+    paths: [".github/workflows/scan.yml", "scanner.py", "build_page.py", "desk/**", "data/trigger.txt"]
 
 permissions:
   contents: write

@@ -78,18 +78,25 @@ def mint_info(mint, rpc=scanner.rpc):
             "supply": int(info["supply"]), "decimals": int(info["decimals"])}
 
 
-def top_holders(mint, rpc=scanner.rpc):
+def top_holders(mint, rpc=scanner.rpc, rc=None):
     """Largest holders as [{owner, amount, is_wallet}] (raw amounts).
-    is_wallet=False means the owner is a program account (pool vault, locker...)."""
-    largest = rpc("getTokenLargestAccounts", [mint, {"commitment": "confirmed"}])["value"][:20]
-    accts = rpc("getMultipleAccounts", [[a["address"] for a in largest], {"encoding": "jsonParsed"}])["value"]
-    rows = []
-    for a, acc in zip(largest, accts):
-        try:
-            owner = acc["data"]["parsed"]["info"]["owner"]
-        except Exception:
-            owner = None
-        rows.append({"owner": owner, "amount": int(a["amount"])})
+    is_wallet=False means the owner is a program account (pool vault, locker...).
+    Keyless endpoints often refuse getTokenLargestAccounts -> fall back to RugCheck's holder list."""
+    try:
+        largest = rpc("getTokenLargestAccounts", [mint, {"commitment": "confirmed"}])["value"][:20]
+        accts = rpc("getMultipleAccounts", [[a["address"] for a in largest], {"encoding": "jsonParsed"}])["value"]
+        rows = []
+        for a, acc in zip(largest, accts):
+            try:
+                owner = acc["data"]["parsed"]["info"]["owner"]
+            except Exception:
+                owner = None
+            rows.append({"owner": owner, "amount": int(a["amount"])})
+    except scanner.RpcError:
+        hs = (rc or {}).get("topHolders") or []
+        if not hs:
+            raise
+        rows = [{"owner": h.get("owner"), "amount": int(float(h.get("amount") or 0))} for h in hs[:20]]
     owners = [r["owner"] for r in rows if r["owner"]]
     kinds = {}
     if owners:

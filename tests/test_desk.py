@@ -356,3 +356,34 @@ def test_rejected_coins_are_tracked(monkeypatch):
     monkeypatch.setattr(M, "load_radar", lambda: {"bots": set(), "tokens": {}})
     d.cycle(NOW)
     assert "M" in s["tracking"] and s["tracking"]["M"]["decision"] == "REJECT"
+
+
+# ------------------------------------------------------------------ keyless endpoint rotation
+def test_rpc_skips_endpoint_that_blocks_a_method(monkeypatch):
+    import scanner
+    monkeypatch.setattr(scanner, "RPC_URLS", ["https://a.test", "https://b.test"])
+    monkeypatch.setattr(scanner, "_blocked", set())
+    monkeypatch.setattr(scanner, "_cool", {})
+    monkeypatch.setattr(scanner, "MIN_INTERVAL", 0)
+    hits = []
+    def one(url, method, params):
+        hits.append(url)
+        if url == "https://a.test":
+            raise scanner.RpcError("blocked", "Request blocked")
+        return "OK"
+    monkeypatch.setattr(scanner, "_one", one)
+    assert scanner.rpc("getTokenLargestAccounts", []) == "OK"
+    assert scanner.rpc("getTokenLargestAccounts", []) == "OK"
+    assert hits == ["https://a.test", "https://b.test", "https://b.test"], "blocked endpoint remembered"
+
+
+def test_holders_fall_back_to_rugcheck():
+    from desk import sources as S
+    import scanner
+    def rpc(method, params):
+        if method == "getTokenLargestAccounts":
+            raise scanner.RpcError("blocked")
+        return {"value": [{"owner": "11111111111111111111111111111111"}, {"owner": "SomeProgram"}]}
+    rc = {"topHolders": [{"owner": "W1", "amount": "5000"}, {"owner": "POOL", "amount": "90000"}]}
+    rows = S.top_holders("MINT", rpc, rc)
+    assert [(r["owner"], r["amount"], r["is_wallet"]) for r in rows] == [("W1", 5000, True), ("POOL", 90000, False)]
