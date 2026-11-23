@@ -51,5 +51,6 @@ FAMOUS_TICKERS = {"SOL", "BONK", "WIF", "POPCAT", "TRUMP", "MELANIA", "PENGU", "
 MIN_ENTRY_SCORE = 60
 
 # --- loop -------------------------------------------------------------------------
-TICK_SEC = 45
+import os
+TICK_SEC = float(os.environ.get("DESK_TICK") or 45)   # live server: 10
 GAP_WARN_SEC = 120                  # a pause longer than this is logged as a gap

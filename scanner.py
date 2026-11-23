@@ -52,6 +52,7 @@ class RpcError(Exception):
 _lock = threading.Lock()
 _last_call = [0.0]
 CALLS = {"n": 0}
+ERR_SAMPLES = {}          # reason -> short sample message (shown on the page for diagnosis)
 
 
 def _pace():
@@ -66,7 +67,7 @@ def rpc(method, params, retries=3):
     last = "other"
     for attempt in range(retries):
         _pace()
-        CALLS["n"] += 1
+        CALLS["n"] += 10 if method == "getTransactionsForAddress" else 1   # credit cost
         try:
             r = requests.post(RPC_URL, json={"jsonrpc": "2.0", "id": 1, "method": method,
                                              "params": params}, timeout=20)
@@ -77,6 +78,7 @@ def rpc(method, params, retries=3):
         else:
             if r.status_code == 429:
                 last = "rate_limited"
+                ERR_SAMPLES.setdefault(last, f"{method}: HTTP 429")
             elif r.status_code in (401, 403):
                 raise RpcError("auth", f"HTTP {r.status_code} (API key wrong or credits used up?)")
             elif r.status_code >= 500:
@@ -97,12 +99,33 @@ def rpc(method, params, retries=3):
                         raise RpcError("budget", msg)
                     else:
                         last = "rpc_error"
+                    ERR_SAMPLES.setdefault(last, f"{method}: {code} {msg}")
         time.sleep(1.5 * (attempt + 1) + random.random())
     raise RpcError(last)
 
 
+def oldest_first_helius(mint, rpc_call=rpc, limit=100):
+    """Helius-only: oldest transactions in ONE call (10 credits), no paging needed."""
+    res = rpc_call("getTransactionsForAddress", [mint, {"transactionDetails": "signatures",
+                                                         "sortOrder": "asc", "limit": limit}])
+    rows = (res or {}).get("data") or []
+    return [{"signature": r["signature"], "slot": r["slot"], "err": r.get("err")} for r in rows]
+
+
 def earliest_signatures(mint, rpc_call=rpc, max_pages=3):
     """Oldest transactions of a mint, oldest first. Raises RpcError('too_busy') if unreachable."""
+    if RPC_KIND == "helius" and rpc_call is rpc:
+        first = rpc_call("getSignaturesForAddress", [mint, {"limit": 1000, "commitment": "confirmed"}]) or []
+        if not first:
+            raise RpcError("not_indexed_yet")
+        if len(first) < 1000:
+            return list(reversed(first))           # small coin: 1 credit, done
+        try:
+            rows = oldest_first_helius(mint, rpc_call)
+            if rows:
+                return rows                        # busy coin: jump straight to the beginning
+        except RpcError:
+            pass                                   # fall back to paging below
     before, last_page = None, []
     for _ in range(max_pages):
         opts = {"limit": 1000, "commitment": "confirmed"}
@@ -217,7 +240,8 @@ async def run(minutes, max_tokens):
         for k in list(credits):            # keep 3 months
             if k < month_key(time.time() - 95 * 86400):
                 credits.pop(k)
-        meta.update(last_run=int(time.time()), last_stats=dict(stats, rpc_calls=CALLS["n"]))
+        meta.update(last_run=int(time.time()),
+                    last_stats=dict(stats, rpc_calls=CALLS["n"], samples=dict(ERR_SAMPLES)))
         META_FILE.write_text(json.dumps(meta, separators=(",", ":")))
 
     async def listen():

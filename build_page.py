@@ -133,6 +133,7 @@ const RS={rate_limited:"窓口が混雑",timeout:"応答が遅い",network:"通�
   <div class="hrow"><span>調べきれた割合</span><b class="${cls}">${pct}%（${s.checked}/${tried}）</b></div>
   <div class="hrow"><span>再挑戦した数</span><b>${s.retried||0}</b></div>
   <div class="hrow"><span>失敗の理由</span><span class="small">${rs}</span></div>
+  ${Object.keys(s.samples||{}).length?`<div class="small" style="margin:4px 0 6px">エラー例：${Object.values(s.samples).map(x=>String(x).replace(/</g,"")).join(" ／ ")}</div>`:""}
   <div class="hrow"><span>データ窓口</span><b>${s.rpc==="helius"?"Helius（専用）":"公共（無料・混みやすい）"}</b></div>
   ${cr!=null?`<div class="hrow"><span>今月の使用クレジット</span><b>${cr.toLocaleString()} / 1,000,000</b></div>`:""}`;
 })();
