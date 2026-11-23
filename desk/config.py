@@ -13,14 +13,15 @@ LIVE_FILE = ROOT / "site" / "live.json"   # "now doing" feed for the phone page 
 TZ = "Pacific/Honolulu"            # day boundary for the daily loss limit
 
 # --- money -------------------------------------------------------------------
-START_CASH = 100.0                  # paper capital (USD)
-SMALL_MODE = True                   # $5-10 per trade
+START_CASH = 1000.0                 # paper capital (USD) - new book from 2026-11-23 (owner's decision)
+BOOK = "scalp-1000-2026-11-23"      # changing this starts a fresh paper book (old one is archived)
+SMALL_MODE = False                  # was True ($5-10 per trade) for the $100 book
 SMALL_MIN, SMALL_MAX = 5.0, 10.0
 MAX_POSITION_PCT = 0.10             # design said up to 40%; capped at 10% (gap losses)
 MAX_OPEN_POSITIONS = 5
-DAILY_LOSS_LIMIT = 10.0             # no new buys for the rest of the Hawaii day
-TOTAL_LOSS_LIMIT = 30.0             # full stop
-WORST_CASE_GAP = 0.50               # assume a position can gap down 50% past the stop
+DAILY_LOSS_LIMIT = 100.0            # 10% of the book: no new buys for the rest of the Hawaii day
+TOTAL_LOSS_LIMIT = 300.0            # 30% of the book: full stop
+WORST_CASE_GAP = 0.25               # scalp (stop -6%): assume a position can still gap down 25% (was 50%)
 
 # --- execution model (paper) ---------------------------------------------------
 MAX_SLIPPAGE = 0.02                 # 2%, estimated with x*y=k

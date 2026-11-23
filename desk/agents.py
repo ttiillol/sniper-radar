@@ -345,11 +345,12 @@ def risk(state, pair, now=None):
         return V(False, reasons=[f"保有が上限の{C.MAX_OPEN_POSITIONS}件"])
     dpl = P.day_pnl(state, now)
     if dpl <= -C.DAILY_LOSS_LIMIT:
-        return V(False, reasons=[f"今日の損失 ${-dpl:.2f}（上限$10）— ハワイ時間の明日まで新規購入なし"])
+        return V(False, reasons=[f"今日の損失 ${-dpl:.2f}（上限${C.DAILY_LOSS_LIMIT:.0f}）— ハワイ時間の明日まで新規購入なし"])
     if state["realized"] <= -C.TOTAL_LOSS_LIMIT:
-        state["halted"] = f"累計損失 ${-state['realized']:.2f}（上限$30）"
+        state["halted"] = f"累計損失 ${-state['realized']:.2f}（上限${C.TOTAL_LOSS_LIMIT:.0f}）"
         return V(False, reasons=[state["halted"]])
-    size = state["cash"] * C.MAX_POSITION_PCT
+    equity = state["cash"] + sum(p["cost"] for p in state["positions"].values())
+    size = equity * C.MAX_POSITION_PCT                   # SIZER: a fixed share of the whole book
     if C.SMALL_MODE:
         size = min(max(size, C.SMALL_MIN), C.SMALL_MAX)
     size = min(size, state["cash"])

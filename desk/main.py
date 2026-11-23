@@ -497,7 +497,7 @@ class Desk:
                               for p in s["positions"].values())
         if now - self._jcache[0] > 60:
             try:
-                self._jcache = (now, J.stats(J.trades(s)))
+                self._jcache = (now, J.stats(J.trades(s), s.get("start_cash")))
             except Exception:
                 self._jcache = (now, {"n": 0})
         js = self._jcache[1]
@@ -516,7 +516,7 @@ class Desk:
             path = [x[1] for x in t["path"]][-40:]
             coins.append({"s": t["symbol"], "m": m, "st": names.get(t["decision"], t["decision"]),
                           "chg": round(path[-1] / path[0] - 1, 4), "p": path[-1], "path": path, "liq": t.get("liq")})
-        return {"head": {"balance": round(val, 2), "start": C.START_CASH, "n": js.get("n", 0),
+        return {"head": {"balance": round(val, 2), "start": s.get("start_cash") or C.START_CASH, "n": js.get("n", 0),
                          "w": js.get("wins", 0), "l": js.get("n", 0) - js.get("wins", 0),
                          "open": len(s["positions"]), "max": C.MAX_OPEN_POSITIONS},
                 "charts": coins[:5]}

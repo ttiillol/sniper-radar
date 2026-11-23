@@ -29,7 +29,10 @@ def trades(state):
     """Closed trades (oldest first). A trade = one BUY and all SELLs of that coin until it was fully sold."""
     open_ = {}
     closed = []
+    since = state.get("book_start", 0)
     for ts, mint, sym, side, usd, pnl, reason in _rows():
+        if ts < since:
+            continue                                 # trades of an archived paper book
         if side == "BUY":
             if mint in open_:                       # re-bought: the previous one must have closed
                 closed.append(open_.pop(mint))
@@ -54,10 +57,10 @@ def trades(state):
     return closed
 
 
-def stats(tr):
+def stats(tr, start=None):
     """Win rate, average R (= expectancy per trade), profit factor, max drawdown, equity curve."""
     n = len(tr)
-    eq, peak, mdd, curve = C.START_CASH, C.START_CASH, 0.0, []
+    eq, peak, mdd, curve = start or C.START_CASH, start or C.START_CASH, 0.0, []
     for t in tr:
         eq += t["pnl"]
         peak = max(peak, eq)
@@ -102,7 +105,7 @@ def day_report(state, day):
     try:
         for line in C.DECISIONS_LOG.read_text().splitlines()[-8000:]:
             d = json.loads(line)
-            if P.hst_day(d["ts"]) == day:
+            if P.hst_day(d["ts"]) == day and d["ts"] >= state.get("book_start", 0):
                 acts[d["action"]] = acts.get(d["action"], 0) + 1
     except (FileNotFoundError, ValueError, KeyError):
         pass

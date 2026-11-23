@@ -29,7 +29,8 @@ def slippage(size_usd, liquidity_usd):
 
 
 def new_state():
-    return {"cash": C.START_CASH, "realized": 0.0, "positions": {}, "daily": {}, "halted": None,
+    return {"book": C.BOOK, "book_start": int(time.time()), "start_cash": C.START_CASH,
+            "cash": C.START_CASH, "realized": 0.0, "positions": {}, "daily": {}, "halted": None,
             "last_heartbeat": None, "gaps": [], "candidates": {}, "seen_symbols": {},
             "credits": {}, "stats": {"evaluated": 0, "rejected": {}, "bought": 0, "sold": 0}}
 
@@ -37,11 +38,23 @@ def new_state():
 def load_state():
     try:
         s = json.loads(C.STATE_FILE.read_text())
-        base = new_state()
-        base.update(s)
-        return base
     except Exception:
         return new_state()
+    if s.get("book") != C.BOOK:
+        # a new paper book was started: keep the old one as an archive file, begin from scratch
+        try:
+            old = C.STATE_FILE.with_name(f"state-archive-{s.get('book') or 'v1'}-{int(time.time())}.json")
+            old.write_text(json.dumps(s, separators=(",", ":")))
+        except Exception:
+            pass
+        fresh = new_state()
+        fresh["credits"] = s.get("credits") or {}          # RPC usage counter is per month, keep it
+        save_state(fresh)
+        log_decision("book", "", "", "RESUME", f"新しい練習帳簿を開始: ${C.START_CASH:,.0f}（前の帳簿は保管）")
+        return fresh
+    base = new_state()
+    base.update(s)
+    return base
 
 
 def save_state(s):

@@ -14,7 +14,8 @@ def build(site: Path):
     s = P.load_state()
     try:
         lines = C.DECISIONS_LOG.read_text().splitlines()[-150:]
-        decisions = [json.loads(x) for x in lines if x.strip()][::-1]
+        decisions = [d for d in (json.loads(x) for x in lines if x.strip())
+                     if d.get("ts", 0) >= s.get("book_start", 0)][::-1]
     except FileNotFoundError:
         decisions = []
     slim = [{k: d.get(k) for k in ("ts", "kind", "mint", "symbol", "action", "reason")} for d in decisions]
@@ -28,7 +29,7 @@ def build(site: Path):
                 for k in (s.get("kol_seen") or [])[-15:]][::-1]
     try:
         tr = J.trades(s)
-        jstats, bvl = J.stats(tr), J.backtest_vs_live(s, tr)
+        jstats, bvl = J.stats(tr, s.get("start_cash")), J.backtest_vs_live(s, tr)
         jtr = [{k: t[k] for k in ("symbol", "mint", "closed", "R", "ret", "pnl", "hold_min", "exit")} for t in tr[-40:]][::-1]
     except Exception:
         jstats, bvl, jtr = {"n": 0, "curve": []}, {}, []
@@ -43,7 +44,7 @@ def build(site: Path):
         "outcomes_n": len(s.get("outcomes", [])),
         "selfcheck": s.get("selfcheck"), "kol_seen": kol_seen, "kol_count": kol_count, "journal": jstats, "jtrades": jtr, "bvl": bvl, "risk_pct": J.RISK_PCT,
         "limits": {"daily": C.DAILY_LOSS_LIMIT, "total": C.TOTAL_LOSS_LIMIT, "max": C.MAX_OPEN_POSITIONS,
-                   "start": C.START_CASH},
+                   "start": s.get("start_cash") or C.START_CASH},
     }
     html = TEMPLATE.replace("__DATA__", json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
                             .replace("</", "<\\/"))
@@ -177,7 +178,7 @@ a{color:var(--acc);text-decoration:none}h1{font-size:20px;margin:4px 0 2px}.sub{
 <div class="card warn"><h2>注意</h2>
 これは<b>練習（ペーパー）</b>です。本物のお金は動きません。ミームコインは数分で価値がほぼゼロになることがあり、損切りが効かずに大きく負けることがあります。
 この画面の成績が良くても、本番で同じ結果になる保証はありません。<br><br>
-作戦：<b>勢いスキャル</b>（2026-11-23〜）。注目ランキングから勢いのあるコインを2分ごとに集め、安全チェック（ラグ・まとめ買い・作成者の売り・売却テスト）を通ったものだけを、5分の勢い+1%以上・1時間が上向き・買いが55%以上のときに買う。<br>売り方S：−6%で損切り ／ +6%に届いたら高値から−4%で全部利確 ／ +10%で半分売り、残りは負けなし ／ +15%から高値−6%で追いかけ ／ 20分たって買値割れなら撤退 ／ 最長45分 ／ 売ったあと5分休んで同じコインは1日3回まで ／ 1回 $5〜10 ／ 最大5件 ／ 1日 −$10 で新規停止 ／ 累計 −$30 で完全停止 ／ 手数料とすべり（往復約3%）は全部差し引き</div>
+作戦：<b>勢いスキャル</b>（2026-11-23〜）。注目ランキングから勢いのあるコインを2分ごとに集め、安全チェック（ラグ・まとめ買い・作成者の売り・売却テスト）を通ったものだけを、5分の勢い+1%以上・1時間が上向き・買いが55%以上のときに買う。<br>売り方S：−6%で損切り ／ +6%に届いたら高値から−4%で全部利確 ／ +10%で半分売り、残りは負けなし ／ +15%から高値−6%で追いかけ ／ 20分たって買値割れなら撤退 ／ 最長45分 ／ 売ったあと5分休んで同じコインは1日3回まで ／ 練習資金 $1,000（2026-11-23に新しい帳簿で開始）／ 1回 資産の10%（約$100）／ 最大5件 ／ 1日 −$100 で新規停止 ／ 累計 −$300 で完全停止 ／ 損失枠は1件あたり最大25%の急落を見込んで計算 ／ 手数料とすべり（往復約3%）は全部差し引き</div>
 <script>
 const D=__DATA__;const $=s=>document.querySelector(s);
 const ago=t=>{if(!t)return"-";const m=Math.round((Date.now()/1000-t)/60);return m<60?m+"分前":m<1440?Math.round(m/60)+"時間前":Math.round(m/1440)+"日前"};

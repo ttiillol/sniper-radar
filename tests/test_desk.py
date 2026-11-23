@@ -92,11 +92,14 @@ def test_slippage_constant_product():
     assert P.slippage(1000, 30_000) > C.MAX_SLIPPAGE
 
 
-def test_small_mode_size_and_cap():
+def test_size_is_a_share_of_the_whole_book():
     s = P.new_state()
+    assert s["cash"] == 1000 and s["book"] == C.BOOK
     r = A.risk(s, pair(), NOW)
-    assert r["ok"] and C.SMALL_MIN <= r["size"] <= C.SMALL_MAX
-    assert r["size"] <= s["cash"] * max(C.MAX_POSITION_PCT, C.SMALL_MAX / s["cash"])
+    assert r["ok"] and r["size"] == pytest.approx(100)                     # 10% of $1,000
+    s["cash"] -= 300
+    s["positions"]["a"] = {"cost": 300.0}
+    assert A.risk(s, pair(), NOW)["size"] == pytest.approx(100), "same size while money is in positions"
 
 
 def test_risk_rejects_high_slippage():
@@ -113,7 +116,7 @@ def test_max_five_positions():
 
 def test_daily_loss_limit_hawaii_day():
     s = P.new_state()
-    s["daily"][P.hst_day(NOW)] = -10.0
+    s["daily"][P.hst_day(NOW)] = -C.DAILY_LOSS_LIMIT
     assert not A.risk(s, pair(), NOW)["ok"]
     # next Hawaii day -> allowed again
     assert A.risk(s, pair(), NOW + 86400)["ok"]
@@ -121,7 +124,7 @@ def test_daily_loss_limit_hawaii_day():
 
 def test_total_loss_full_stop():
     s = P.new_state()
-    s["realized"] = -30.0
+    s["realized"] = -C.TOTAL_LOSS_LIMIT
     assert not A.risk(s, pair(), NOW)["ok"]
     assert s["halted"]
     assert not A.risk(s, pair(), NOW + 5 * 86400)["ok"], "full stop is permanent"
@@ -129,9 +132,9 @@ def test_total_loss_full_stop():
 
 def test_worst_case_gap_budget():
     s = P.new_state()
-    s["daily"][P.hst_day(NOW)] = -6.0          # $4 room left today
-    s["positions"]["a"] = {"cost": 6.0}         # worst case -$3 already reserved
-    r = A.risk(s, pair(), NOW)                  # new $10 position worst case -$5 > $1 room
+    s["daily"][P.hst_day(NOW)] = -60.0         # $40 room left today
+    s["positions"]["a"] = {"cost": 100.0}       # worst case -$25 already reserved
+    r = A.risk(s, pair(), NOW)                  # new $100 position worst case -$25 > $15 room
     assert not r["ok"] and "最大損失" in r["reasons"][0]
 
 
@@ -809,7 +812,7 @@ def test_cockpit_live_data(monkeypatch):
     assert {"rug", "bundle", "whale", "kol", "flow", "picker", "sizer", "exec"} <= set(ag)
     assert set(ag) <= set(L.AGENTS) and "練習買い" in ag["exec"]["x"]
     st = live["status"]
-    assert st["head"]["open"] == 1 and st["head"]["balance"] == pytest.approx(100, abs=0.5)
+    assert st["head"]["open"] == 1 and st["head"]["balance"] == pytest.approx(1000, abs=5)
     assert st["charts"][0]["st"] == "保有中" and len(st["charts"][0]["path"]) >= 1
     fl = st["flow"]
     assert fl["symbol"] == "GOOD" and fl["wb"] == 1 and fl["ws"] == 1 and len(fl["ladder"]) == 5
@@ -974,3 +977,24 @@ def test_skipped_coin_is_not_reopened_every_scan(monkeypatch):
     d.cycle(NOW)
     c = s["candidates"]["M"]
     assert c["status"] == "skipped" and c["last_eval"] == NOW
+
+
+def test_old_book_is_archived_and_a_fresh_one_starts():
+    import json as _j
+    C.STATE_FILE.write_text(_j.dumps({"cash": 85.3, "realized": -5.2, "positions": {"W": {"cost": 9.5}},
+                                      "outcomes": [{"x": 1}], "credits": {"2026-11": 1234}}))
+    s = P.load_state()
+    assert s["cash"] == 1000 and not s["positions"] and not s.get("outcomes") and s["book"] == C.BOOK
+    assert s["credits"] == {"2026-11": 1234}
+    arch = list(C.STATE_FILE.parent.glob("state-archive-*.json"))
+    assert len(arch) == 1 and _j.loads(arch[0].read_text())["cash"] == 85.3
+    assert P.load_state()["book_start"] == s["book_start"], "only once"
+
+
+def test_journal_ignores_trades_from_an_archived_book():
+    from desk import journal as J
+    s = P.new_state()
+    _round_trip(s, "OLD", "OLD", 10, 0.5)
+    s2 = P.new_state()
+    s2["book_start"] = int(__import__("time").time()) + 1
+    assert J.trades(s) and J.trades(s2) == []
