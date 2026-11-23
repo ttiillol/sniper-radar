@@ -387,3 +387,31 @@ def test_holders_fall_back_to_rugcheck():
     rc = {"topHolders": [{"owner": "W1", "amount": "5000"}, {"owner": "POOL", "amount": "90000"}]}
     rows = S.top_holders("MINT", rpc, rc)
     assert [(r["owner"], r["amount"], r["is_wallet"]) for r in rows] == [("W1", 5000, True), ("POOL", 90000, False)]
+
+
+# ------------------------------------------------------------------ notifications
+def test_notify_disabled_without_topic(monkeypatch):
+    from desk import notify as N
+    monkeypatch.setattr(N, "TOPIC", "")
+    called = []
+    monkeypatch.setattr(N.requests, "post", lambda *a, **k: called.append(1))
+    assert N.send("t", "m") is False and not called
+
+
+def test_buy_and_stop_send_notifications(monkeypatch):
+    from desk import notify as N
+    sent = []
+    monkeypatch.setattr(N, "send_async", lambda title, msg, **k: sent.append(title))
+    s = P.new_state()
+    s["candidates"]["M"] = {"seen": NOW - 1800, "grad": None, "symbol": "GOOD", "status": "waiting", "checks": 0}
+    good = lambda mint, p, st, radar, now: rug(p=p, state=st)
+    prices = {"p": 0.001}
+    d = M.Desk(state=s, fetch_pairs=lambda ms: {m: pair(price=prices["p"]) for m in ms}, rug=good)
+    monkeypatch.setattr(M, "credits_ok", lambda st: True)
+    monkeypatch.setattr(M, "load_radar", lambda: {"bots": set(), "tokens": {}})
+    d.cycle(NOW)
+    assert any(t.startswith("🟢 BUY") for t in sent)
+    prices["p"] = 0.0009                                   # -10% -> stop
+    d.cycle(NOW + 60)
+    assert any(t.startswith("🔴 STOP") for t in sent)
+    assert "残高" in d.summary_text()

@@ -19,6 +19,7 @@ from . import config as C
 from . import portfolio as P
 from . import sources as S
 from . import tracker as T
+from . import notify as N
 import scanner
 
 
@@ -94,12 +95,18 @@ class Desk:
                 return
             liq = (pair.get("liquidity") or {}).get("usd")
             pos["liq"] = liq or pos.get("liq")
+            pos["last_price"] = price
             frac, why = A.exit_decision(pos, price, liq, now)
             if frac:
                 chg = price / pos["entry"] - 1
                 pnl = P.paper_sell(self.s, mint, frac, price, why, now)
                 P.log_decision("exit", mint, pos["symbol"], "SELL", why, fraction=frac,
                                change_pct=round(chg * 100, 2), pnl=round(pnl, 2))
+                stop = why.startswith("損切り")
+                N.send_async(f"{'🔴 STOP' if stop else '🔵 SELL'} {pos['symbol']}  {pnl:+.2f}ドル",
+                             f"{why}\n残高 ${self.s['cash']:.2f} ・ 今日 {P.day_pnl(self.s, now):+.2f}ドル（練習）",
+                             tags=["red_circle" if stop else "large_blue_circle"],
+                             click=f"https://dexscreener.com/solana/{mint}")
 
     def _error(self, where, mint, e):
         import traceback
@@ -187,6 +194,11 @@ class Desk:
                                  f"点数{score}", now)
         cand["status"] = "bought"
         T.start(self.s, mint, sym, price, rg["facts"]["liq"], "BUY", [], score, now)
+        f = rg["facts"]
+        N.send_async(f"🟢 BUY {sym}  ${rk['size']:.2f}",
+                     f"点数{score} ・ 流動性 ${f.get('liq', 0):,.0f} ・ 上位10 {f.get('top10_pct')}%\n"
+                     f"{' / '.join((sn['reasons'] + hy['reasons'])[:3])}\n（練習・本物のお金は動きません）",
+                     tags=["green_circle"], click=f"https://dexscreener.com/solana/{mint}")
         P.log_decision("entry", mint, sym, "BUY", f"点数{score}・{rk['reasons'][0]}", price=fill,
                        facts=rg["facts"], **why)
         return "bought"
@@ -219,6 +231,7 @@ class Desk:
                 except Exception as e:
                     self.s["candidates"].get(m, {})["status"] = "error"
                     self._error("evaluate", m, e)
+        self.alerts(now)
         self.heartbeat(now)
         return "ok"
 
@@ -231,6 +244,43 @@ class Desk:
             pairs = self.fetch_pairs(want)
             prices = {m: S.pair_price(pairs.get(m)) if pairs.get(m) else None for m in want}
         T.update(self.s, prices, now)
+
+    def alerts(self, now=None):
+        now = now or time.time()
+        day = P.hst_day(now)
+        sent = self.s.setdefault("alerted", {})
+        if self.s.get("halted") and not sent.get("halted"):
+            sent["halted"] = 1
+            N.send_async("⛔ デスク完全停止", self.s["halted"], tags=["no_entry"], priority=5)
+        if P.day_pnl(self.s, now) <= -C.DAILY_LOSS_LIMIT and sent.get("daily") != day:
+            sent["daily"] = day
+            N.send_async("⏸ 今日の損失上限に到達", "ハワイ時間の明日まで新規購入を止めます（練習）",
+                         tags=["pause_button"], priority=4)
+
+    def summary_text(self):
+        s = self.s
+        lines = [f"残高 ${s['cash']:.2f} ・ 確定 {s['realized']:+.2f} ・ 今日 {P.day_pnl(s):+.2f}ドル"]
+        for m, p in s["positions"].items():
+            lp = p.get("last_price") or p["entry"]
+            lines.append(f"  保有 {p['symbol']} {(lp / p['entry'] - 1) * 100:+.1f}%")
+        st = s["stats"]
+        rej = sorted(st.get("rejected", {}).items(), key=lambda x: -x[1])[:2]
+        lines.append(f"審査 {st.get('evaluated', 0)} ・ 買い {st.get('bought', 0)} ・ 売り {st.get('sold', 0)}"
+                     f" ・ エラー {st.get('errors', 0)}")
+        if rej:
+            lines.append("見送り多い理由: " + " / ".join(f"{k} {v}" for k, v in rej))
+        outs = s.get("outcomes", [])
+        if outs:
+            win = sum(1 for o in outs if o["sim"] > 0) / len(outs)
+            lines.append(f"検証 {len(outs)}件 ・ もし全部買っていたら勝率 {win * 100:.0f}%")
+        try:
+            meta = json.loads((C.DATA / "meta.json").read_text())
+            ls = meta.get("last_stats", {})
+            lines.append(f"レーダー: 累計 {meta.get('tokens_total', 0)} コイン調査 ・ 直近 {ls.get('checked', 0)}"
+                         f"/{(ls.get('checked', 0) + ls.get('skipped', 0)) or 0} 成功")
+        except Exception:
+            pass
+        return "\n".join(lines)
 
     def heartbeat(self, now=None):
         self.s["last_heartbeat"] = int(now or time.time())
@@ -252,10 +302,25 @@ async def run_loop(minutes):
     print(f"desk started; backfilled {n} graduated coins; open={len(desk.s['positions'])}", flush=True)
 
     desk.s["stats"]["backfilled"] = desk.s["stats"].get("backfilled", 0) + n
+    url_file = C.DATA / "dashboard_url.txt"
+
+    def dash():
+        try:
+            return url_file.read_text().strip() or None
+        except Exception:
+            return None
+
+    gaps = desk.s.get("gaps") or []
+    gap_txt = f"（{gaps[-1]['sec'] // 60}分止まっていました）" if gaps and time.time() - gaps[-1]["ts"] < 120 else ""
+    N.send_async("▶️ デスク起動" + gap_txt, desk.summary_text(), tags=["arrow_forward"], click=dash())
 
     async def ticker():
         last_fill = time.time()
+        last_sum = time.time()
         while time.time() < until:
+            if time.time() - last_sum > 1800:
+                last_sum = time.time()
+                N.send_async("📊 30分ごとの状況（練習）", desk.summary_text(), tags=["bar_chart"], click=dash())
             if time.time() - last_fill > 600:
                 last_fill = time.time()
                 try:
