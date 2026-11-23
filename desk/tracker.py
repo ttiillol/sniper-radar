@@ -13,7 +13,7 @@ import time
 
 from . import config as C
 
-TRACK_HOURS = 6                 # long enough for the 24h moonbag to matter a bit
+TRACK_HOURS = 3                 # long enough for the 24h moonbag to matter a bit
 SAMPLE_SEC = 300
 MAX_TRACKED = 400
 MAX_OUTCOMES = 3000
@@ -29,10 +29,11 @@ PROFILES = {
                                 "arm": 0.25, "trail": 0.12, "stale_min": None, "max_min": 240},
     "D_守り(+50%後は負けなし)": {"sl": -0.30, "tps": [(0.5, 1 / 3), (1.5, 1 / 3)], "be": 0.02, "arm": 1.5,
                               "trail": 0.35, "stale_min": 90, "max_min": 1440},
-    "E_ハイブリッド(採用中)": C.EXIT_PROFILE,
+    "E_ハイブリッド(旧)": C.EXIT_PROFILE_E,
     # from the 12-agent Grok desk post: TP ladder at 2x and 3x, -12% stop, 25% trail
     "F_2倍3倍利確(-12%)": {"sl": -0.12, "tps": [(1.0, 1 / 3), (2.0, 1 / 3)], "be": None, "arm": 0.25,
                           "trail": 0.25, "stale_min": None, "max_min": 1440},
+    "S_勢いスキャル(採用中)": C.EXIT_PROFILE,
 }
 FEATURES = ("holders", "sniper_hold_pct", "bundle_hold_pct", "insider_pct", "top3_pct", "top10_pct",
             "creator_prev", "creator_dead", "dev_pct", "liq", "kol_n")
@@ -50,7 +51,7 @@ def liq_band(liq):
     return "不明"
 
 
-def start(state, mint, symbol, price, liq, decision, reasons=None, score=None, now=None, facts=None):
+def start(state, mint, symbol, price, liq, decision, reasons=None, score=None, now=None, facts=None, pool=None):
     """Begin following a coin right after the desk decided on it."""
     if not price:
         return
@@ -60,7 +61,7 @@ def start(state, mint, symbol, price, liq, decision, reasons=None, score=None, n
     now = int(now or time.time())
     tr[mint] = {"t0": now, "p0": price, "symbol": symbol, "decision": decision, "score": score,
                 "liq": liq, "reasons": [reason_key(r) for r in (reasons or [])][:4],
-                "path": [[now, price]], "next": now + SAMPLE_SEC,
+                "path": [[now, price]], "next": now + SAMPLE_SEC, "pool": pool,
                 "facts": {k: (facts or {}).get(k) for k in FEATURES if (facts or {}).get(k) is not None}}
 
 
@@ -107,7 +108,7 @@ def finish(state, mint):
            "max_up": round(max(ps) / ps[0] - 1, 4), "max_down": round(min(ps) / ps[0] - 1, 4),
            "end": round(ps[-1] / ps[0] - 1, 4), "samples": len(ps),
            "sims": {k: round(simulate_profile(t["path"], v), 4) for k, v in PROFILES.items()},
-           "facts": t.get("facts", {})}
+           "facts": t.get("facts", {}), "pool": t.get("pool"), "p0": t["p0"]}
     outs = state.setdefault("outcomes", [])
     outs.append(out)
     del outs[:-MAX_OUTCOMES]
@@ -155,3 +156,45 @@ def summarize(outcomes):
                           "avg": round(sum(vals) / len(vals), 4)}
     out["profiles"] = prof
     return out
+
+
+def candle_path(t0, p0, candles):
+    """1-minute candles -> price ticks for replay. Inside one minute the LOW comes first, then the
+    HIGH, then the close: when a stop and a take-profit were both touched, the stop counts (strict)."""
+    path = [[t0, p0]]
+    for ts, o, h, lo, c in candles:
+        if ts + 60 <= t0:
+            continue
+        path += [[ts + 15, lo], [ts + 30, h], [ts + 59, c]]
+    return path
+
+
+def refine(state, fetch, limit=2, now=None):
+    """Re-score finished coins with 1-minute candles (fetch(pool, t_from, t_to) -> candles).
+    The 5-minute samples miss quick spikes and dips, which decide a scalp."""
+    now = now or time.time()
+    done = 0
+    for o in reversed(state.get("outcomes", [])):
+        if done >= limit:
+            break
+        if o.get("fine") or not o.get("pool") or not o.get("p0") or o.get("fine_try", 0) >= 2:
+            continue
+        end = o["t0"] + TRACK_HOURS * 3600
+        if now < end + 120:
+            continue
+        done += 1
+        try:
+            candles = fetch(o["pool"], o["t0"] - 60, end)
+        except Exception:
+            candles = None
+        if not candles or len(candles) < 3:
+            o["fine_try"] = o.get("fine_try", 0) + 1
+            continue
+        path = candle_path(o["t0"], o["p0"], candles)
+        ps = [p for _, p in path]
+        o.update(sim=round(simulate(path), 4), max_up=round(max(ps) / ps[0] - 1, 4),
+                 max_down=round(min(ps) / ps[0] - 1, 4), end=round(ps[-1] / ps[0] - 1, 4),
+                 samples=len(candles), fine=True,
+                 sims={k: round(simulate_profile(path, v), 4) for k, v in PROFILES.items()})
+    return done
+

@@ -32,9 +32,33 @@ FEE_PCT = 0.01                      # assume ~1% total fees per side (pool + pri
 #   +50%: sell 1/3, the rest can no longer lose (floor = entry +2%); from +80% trail 25% from the peak
 #   +150%: sell another 1/3
 #   last 1/3 = moonbag: no ceiling, sold on a 35% drop from its peak (or after 24h)
-EXIT_PROFILE = {"sl": -0.30, "arm0": 0.25, "trail0": 0.12,
-                "tps": [(0.5, 1 / 3), (1.5, 1 / 3)], "be": 0.02, "arm1": 0.8, "trail1": 0.25,
-                "arm": 1.5, "trail": 0.35, "stale_min": None, "max_min": 1440}
+EXIT_PROFILE_E = {"sl": -0.30, "arm0": 0.25, "trail0": 0.12,
+                  "tps": [(0.5, 1 / 3), (1.5, 1 / 3)], "be": 0.02, "arm1": 0.8, "trail1": 0.25,
+                  "arm": 1.5, "trail": 0.35, "stale_min": None, "max_min": 1440}
+
+# --- STRATEGY (2026-11-23, owner's decision): momentum scalping replaces the graduation sniper.
+# Trade any Solana memecoin with strong momentum (not only fresh pump.fun graduates), take small
+# wins quickly and move on. Rug checks still apply. Costs (~3% round trip) are always deducted.
+STRATEGY = "scalp"
+# Live exit profile "S: momentum scalp"
+#   stop -6% / once +6% was reached, sell everything on a 4% pullback from the peak (locks small wins)
+#   +10%: sell half; the rest can no longer lose (floor = entry +1%); from +15% trail 6% from the peak
+#   below entry after 20 minutes -> out; never hold longer than 45 minutes
+EXIT_PROFILE = {"sl": -0.06, "arm0": 0.06, "trail0": 0.04, "tps": [(0.10, 0.5)], "be": 0.01,
+                "arm": 0.15, "trail": 0.06, "stale_min": 20, "max_min": 45}
+SCALP_MIN_M5 = 1.0                  # price change over the last 5 minutes must be at least +1%...
+SCALP_MAX_M5 = 25.0                 # ...but not a vertical spike (no chasing)
+SCALP_MIN_H1 = 0.0                  # and the last hour must be up (trend)
+SCALP_MIN_PRESSURE = 0.55           # buyers' share of USD volume in the last 10 minutes
+SCALP_MIN_VOL_M5 = 3_000            # USD traded in the last 5 minutes (activity)
+SCALP_RECHECK_SEC = 60              # weak momentum: look again after a minute...
+SCALP_MAX_CHECKS = 8                # ...up to 8 times, then wait for the coin to trend again
+SCALP_RUG_CACHE_SEC = 1800          # a passed rug check is reused for 30 minutes
+SCALP_COOLDOWN_SEC = 300            # after selling a coin, wait 5 minutes before trading it again
+SCALP_MAX_TRADES_PER_COIN = 3       # per coin per Hawaii day
+SCALP_RECHECK_REJECTED_MIN = 15     # a coin rejected earlier is re-examined if it trends again 15+ min later
+SCALP_CAND_TTL_SEC = 2 * 3600       # forget candidates that stopped trending
+EARLY_CHECK_MAX_AGE_MIN = 360       # early-buyer (bundle/sniper) analysis only for coins younger than 6h
 # legacy single-rule exits (profile A, kept for comparison only)
 STOP_LOSS = -0.06
 TAKE_PROFIT_1 = 0.25                # sell half at +25%
@@ -43,7 +67,7 @@ TRAIL_DIST = 0.12                   # ...and sells if price falls 12% from the p
 MAX_HOLD_MIN = 240                  # time stop
 
 # --- rug rules (design doc) ---------------------------------------------------
-MIN_LIQ_USD = 10_000                # was 30k: only 10% of graduates passed (data 2026-11-23)
+MIN_LIQ_USD = 25_000                # scalp: $10 trades need some depth; pump LP is burned (can't be pulled)
 MIN_AGE_AFTER_GRAD_MIN = 20
 MAX_AGE_AFTER_GRAD_MIN = 180        # stop considering very old graduations
 MAX_DEV_PCT = 0.05
@@ -86,4 +110,4 @@ MAX_SELL_IMPACT = 0.05              # sell simulation: selling our size must mov
 DEV_CHECK_SEC = 60                  # while holding: check every minute whether the creator sold
 REENTRY_WAIT_SEC = 120              # after a stop-loss, look at the coin once more after 2 minutes...
 REENTRY_MIN_WHALES = 3              # ...and only re-buy if 3+ different whales bought within 2 minutes
-TRENDING_EVERY_SEC = 300
+TRENDING_EVERY_SEC = 120

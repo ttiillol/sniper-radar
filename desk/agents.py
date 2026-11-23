@@ -50,6 +50,13 @@ class Scanner:
                 if now - c["seen"] > 6 * 3600:
                     del state["candidates"][m]          # forget old decisions
                 continue
+            if C.STRATEGY == "scalp":
+                # any age is fine; a candidate lives while it keeps trending (scout refreshes it)
+                if now - c.get("refreshed", c["seen"]) > C.SCALP_CAND_TTL_SEC:
+                    c["status"] = "expired"
+                elif now >= c.get("next_check", 0):
+                    out.append(m)
+                continue
             ref = c["grad"] or c["seen"]
             age_min = (now - ref) / 60
             if age_min > C.MAX_AGE_AFTER_GRAD_MIN:
@@ -178,6 +185,9 @@ def rug_check(mint, pair, state, radar, now=None, rpc=None, rc=None, gp=None, ho
 
     # --- radar: bundle buyers in the creation block
     rt = radar.get("tokens", {}).get(mint)
+    if rt is None and early is None and (facts.get("age_min") or 0) > C.EARLY_CHECK_MAX_AGE_MIN:
+        notes.append("作られてから6時間以上たったコインのため、初期の買い手チェックは省略")
+        return V(not fails, reasons=fails or ["全項目合格"], notes=notes, facts=facts, creator=creator)
     try:
         if rt is None and early is None:
             early = scanner.analyze_token(mint, creator, rpc_call=rpc, max_pages=20)["early"]
@@ -204,6 +214,37 @@ def rug_check(mint, pair, state, radar, now=None, rpc=None, rc=None, gp=None, ho
         notes.append(f"初期の買い手を確認できず（{getattr(e, 'reason', type(e).__name__)}）")
 
     return V(not fails, reasons=fails or ["全項目合格"], notes=notes, facts=facts, creator=creator)
+
+
+# ============================================================ 4b. Momentum (scalp gate)
+def momentum(pair, flow=None):
+    """MOMENTUM agent for the scalp strategy. ok=False means 'not now' (look again shortly),
+    not 'bad coin'. Uses DexScreener price changes/volume + the last-10-minute order flow."""
+    pc = pair.get("priceChange") or {}
+    m5, h1 = float(pc.get("m5") or 0), float(pc.get("h1") or 0)
+    vol5 = float((pair.get("volume") or {}).get("m5") or 0)
+    tx5 = (pair.get("txns") or {}).get("m5") or {}
+    b5, s5 = tx5.get("buys") or 0, tx5.get("sells") or 0
+    why, score = [], 50
+    if m5 > C.SCALP_MAX_M5:
+        return V(False, 0, [f"5分で+{m5:.0f}%の急騰（飛び乗りになる）"])
+    if m5 < C.SCALP_MIN_M5:
+        return V(False, 0, [f"5分の勢いが弱い（{m5:+.1f}%）"])
+    if h1 < C.SCALP_MIN_H1:
+        return V(False, 0, [f"1時間の流れが下向き（{h1:+.1f}%）"])
+    if vol5 and vol5 < C.SCALP_MIN_VOL_M5:
+        return V(False, 0, [f"5分の売買額が少ない（${vol5:,.0f}）"])
+    p = (flow or {}).get("pressure")
+    if p is not None and p < C.SCALP_MIN_PRESSURE:
+        return V(False, 0, [f"買いの勢いが足りない（買い{p * 100:.0f}%）"])
+    if p is None and b5 <= s5:
+        return V(False, 0, [f"5分の買い{b5}件 ≦ 売り{s5}件"])
+    score += min(20, m5 * 2); why.append(f"5分 +{m5:.1f}%")
+    if h1 >= 20:
+        score += 10; why.append(f"1時間 +{h1:.0f}%（上昇トレンド）")
+    if p is not None and p >= 0.65:
+        score += 10; why.append(f"買い{p * 100:.0f}%")
+    return V(True, round(min(100, score)), why)
 
 
 # ============================================================ 4. Whale

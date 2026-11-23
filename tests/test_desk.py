@@ -28,6 +28,18 @@ def tmp_data(tmp_path, monkeypatch):
     P._db = None
 
 
+@pytest.fixture
+def sniper(monkeypatch):
+    """Old strategy (fresh pump.fun graduates only) - its rules are kept and still tested."""
+    monkeypatch.setattr(C, "STRATEGY", "sniper")
+    monkeypatch.setattr(C, "EXIT_PROFILE", C.EXIT_PROFILE_E)
+
+
+@pytest.fixture
+def profile_e(monkeypatch):
+    monkeypatch.setattr(C, "EXIT_PROFILE", C.EXIT_PROFILE_E)
+
+
 def pair(liq=80_000, age_min=30, price=0.001, sym="GOOD", m5=2.0, h1=40, buys=30, sells=15, h1tx=400):
     return {"dexId": "pumpswap", "priceUsd": str(price), "liquidity": {"usd": liq},
             "pairCreatedAt": (NOW - age_min * 60) * 1000, "baseToken": {"symbol": sym, "address": "M"},
@@ -193,7 +205,7 @@ def test_stop_loss_and_gap_fill_is_honest():
     assert frac == 1.0 and "損切り" in why and "-33" in why
 
 
-def test_ladder_then_breakeven_floor():
+def test_ladder_then_breakeven_floor(profile_e):
     p = pos()
     frac, why = A.exit_decision(p, 1.55, 80_000, NOW + 60)
     assert frac == pytest.approx(1 / 3) and "利益確定" in why and "引き上げ" in why, why
@@ -202,7 +214,7 @@ def test_ladder_then_breakeven_floor():
     assert frac == 1.0 and "建値" in why, why
 
 
-def test_stale_exit_option_and_moonbag():
+def test_stale_exit_option_and_moonbag(profile_e):
     from desk.exits import step
     prof = dict(C.EXIT_PROFILE, stale_min=90)
     st = {"entry": 1.0, "peak": 1.0, "opened": NOW}
@@ -217,7 +229,7 @@ def test_stale_exit_option_and_moonbag():
     assert frac == 1.0 and "トレーリング" in why
 
 
-def test_small_win_locked_before_first_take_profit():
+def test_small_win_locked_before_first_take_profit(profile_e):
     p = pos()
     assert A.exit_decision(p, 1.30, 80_000, NOW + 60)[0] == 0
     frac, why = A.exit_decision(p, 1.30 * 0.87, 80_000, NOW + 120)   # 13% off a +30% peak
@@ -259,7 +271,7 @@ def test_kill_file_stops_loop():
 
 
 # ------------------------------------------------------------------ robustness (found by self-check)
-def test_old_graduation_skipped_without_spending_credits(monkeypatch):
+def test_old_graduation_skipped_without_spending_credits(monkeypatch, sniper):
     s = P.new_state()
     s["candidates"]["OLD"] = {"seen": NOW - 1800, "grad": None, "symbol": "Z", "status": "waiting", "checks": 0}
     called = []
@@ -271,7 +283,7 @@ def test_old_graduation_skipped_without_spending_credits(monkeypatch):
     assert not called and s["candidates"]["OLD"]["status"] == "skipped"
 
 
-def test_non_pumpswap_skipped(monkeypatch):
+def test_non_pumpswap_skipped(monkeypatch, sniper):
     p = pair(); p["dexId"] = "raydium"
     d = M.Desk(state=P.new_state(), rug=lambda *a: 1 / 0)
     assert d.evaluate("X", p, {"bots": set(), "tokens": {}}, NOW) == "skipped"
@@ -345,7 +357,7 @@ def test_wallet_groups_found():
 
 
 # ------------------------------------------------------------------ verification engine
-def test_simulate_uses_desk_exit_rules():
+def test_simulate_uses_desk_exit_rules(profile_e):
     from desk import tracker as T
     t0 = NOW
     stop = [[t0, 1.0], [t0 + 300, 0.97], [t0 + 600, 0.65], [t0 + 900, 2.0]]
@@ -483,9 +495,11 @@ def test_exit_profiles_differ_on_same_path():
     path = [[t0, 1.0], [t0 + 300, 0.90], [t0 + 600, 1.5], [t0 + 900, 3.0], [t0 + 1200, 2.0]]
     a = T.simulate_profile(path, T.PROFILES["A_旧ルール(-6%)"])
     b = T.simulate_profile(path, T.PROFILES["B_業界標準(-35%,2倍で半分)"])
-    e = T.simulate_profile(path, T.PROFILES["E_ハイブリッド(採用中)"])
+    e = T.simulate_profile(path, T.PROFILES["E_ハイブリッド(旧)"])
+    sc = T.simulate_profile(path, T.PROFILES["S_勢いスキャル(採用中)"])
     assert a < 0 < b and e > 0, (a, b, e)
-    assert e == pytest.approx(T.simulate(path)), "E is the live profile"
+    assert sc < 0, "the scalp's shallow stop gives up a dip-then-runner (its known trade-off)"
+    assert sc == pytest.approx(T.simulate(path)), "S is the live profile"
 
 
 
@@ -534,7 +548,8 @@ def test_journal_r_multiples_and_stats():
     _round_trip(s, "L", "LOSE", 10, 0.7)       # about -31% (the stop)
     tr = J.trades(s)
     assert [t["symbol"] for t in tr] == ["WIN", "LOSE"]
-    assert tr[0]["R"] > 1.4 and -1.1 < tr[1]["R"] < -0.9       # 1R = $3 on a $10 buy
+    one_r = 10 * J.RISK_PCT                                   # 1R = stop distance x amount bought
+    assert tr[0]["R"] == pytest.approx(tr[0]["pnl"] / one_r, abs=0.02) and tr[0]["R"] > 0 > tr[1]["R"]
     st = J.stats(tr)
     assert st["n"] == 2 and st["wins"] == 1 and st["win"] == 0.5
     assert st["pf"] > 1 and st["mdd"] > 0 and len(st["curve"]) == 2
@@ -643,7 +658,7 @@ def test_dev_sell_while_holding_exits_at_once(monkeypatch):
     assert "M" not in s["positions"] and s["candidates"]["M"]["reentry_used"]
 
 
-def test_reentry_only_when_whales_pile_in(monkeypatch):
+def test_reentry_only_when_whales_pile_in(monkeypatch, sniper):
     trades = {"v": [_tr(NOW - 20, "buy", 100, f"b{i}") for i in range(20)]}
     d, s, prices = _flow_desk(monkeypatch, trades)
     d.cycle(NOW)
@@ -716,8 +731,10 @@ def test_real_shapes_geckoterminal(monkeypatch):
     tr = F.pool_trades("DjbLtX1HRGZZrJgJ7CwTX6SN3D7tBLiytkGwomBUwTVB")
     assert [x["kind"] for x in tr] == ["sell", "buy"] and round(tr[1]["usd"], 2) == 7.21
     assert tr[0]["wallet"] == "7Yyq8Wmiw8ovTS5kTEusmJzri1SZ31fZ6rSfeqWqdVK8" and tr[0]["t"] == 1795469249
-    tm = F.trending_mints()
-    assert tm == [{"mint": "B34nXKzCgsJb9ChLuSHPRpXLE3WFSWyeT8Cqkzzmpump", "rank": 1, "symbol": "FIONA"}]
+    tm = F.trending_mints()                                   # scalp: any DEX
+    assert [t["symbol"] for t in tm] == ["FIONA", "PEPE"] and tm[0]["mint"].endswith("pump")
+    monkeypatch.setattr(C, "STRATEGY", "sniper")              # sniper: PumpSwap only
+    assert [t["symbol"] for t in F.trending_mints()] == ["FIONA"]
 
 
 def test_real_shapes_jupiter_sell_check(monkeypatch):
@@ -806,3 +823,134 @@ def test_desk_page_has_the_cockpit(tmp_path):
     html = (tmp_path / "desk.html").read_text()
     for part in ('id="hub"', 'id="charts"', 'id="lad"', 'id="radar"', 'id="term"', "Meme Desk", "BALANCE"):
         assert part in html
+
+
+# ------------------------------------------------------------------ momentum scalp strategy (live since 2026-11-23)
+def _scalp_desk(monkeypatch, pr=None, trades=None, rug_calls=None):
+    from desk import notify as N
+    monkeypatch.setattr(C, "FLOW_ON", True)
+    monkeypatch.setattr(N, "send_async", lambda *a, **k: None)
+    monkeypatch.setattr(M, "credits_ok", lambda st: True)
+    monkeypatch.setattr(M, "load_radar", lambda: {"bots": set(), "tokens": {}})
+    s = P.new_state()
+    s["candidates"]["M"] = {"seen": NOW - 60, "grad": None, "symbol": "GOOD", "status": "waiting", "checks": 0}
+    st = {"pair": pr or dict(pair(age_min=60 * 24 * 30), dexId="meteora", pairAddress="POOL")}
+    calls = rug_calls if rug_calls is not None else []
+
+    def rugf(mint, p, state, radar, now):
+        calls.append(now)
+        return A.rug_check(mint, p, state, radar, now=NOW, rpc=lambda *a: None, early=[], **{
+            k: v for k, v in good_rug_inputs().items() if k != "early"})
+    tv = trades or {"v": [_tr(NOW - 20 - i, "buy", 120, f"b{i}") for i in range(25)] + [_tr(NOW - 30, "sell", 300, "s")]}
+    d = M.Desk(state=s, fetch_pairs=lambda ms: {m: st["pair"] for m in ms}, rug=rugf,
+               trades=lambda pool: tv["v"], sell_check=lambda m, usd: {"ok": True, "reason": "ok"})
+    return d, s, st, calls
+
+
+def test_scalp_trades_an_old_non_pump_coin_with_momentum(monkeypatch):
+    d, s, _, _ = _scalp_desk(monkeypatch)                    # 30-day-old meteora pool, +2% in 5 min, +40% in 1h
+    d.cycle(NOW)
+    assert "M" in s["positions"]
+
+
+def test_scalp_prefilter_only_checks_liquidity():
+    m = M.Desk(state=P.new_state())
+    assert m.prefilter("M", dict(pair(age_min=99_999), dexId="raydium"), NOW) is None
+    assert "流動性" in m.prefilter("M", pair(liq=8_000), NOW)
+
+
+def test_weak_momentum_waits_a_minute_and_spikes_are_not_chased(monkeypatch):
+    d, s, st, _ = _scalp_desk(monkeypatch)
+    st["pair"] = dict(st["pair"], priceChange={"m5": 0.2, "h1": 5})
+    d.cycle(NOW)
+    c = s["candidates"]["M"]
+    assert not s["positions"] and c["status"] == "waiting" and c["next_check"] == NOW + C.SCALP_RECHECK_SEC
+    assert A.momentum(dict(pair(), priceChange={"m5": 40, "h1": 80}))["ok"] is False      # vertical spike
+    assert A.momentum(dict(pair(), priceChange={"m5": 3, "h1": -5}))["ok"] is False       # hour is down
+    sell_heavy = F_analyze_sell_heavy()
+    assert A.momentum(pair(), sell_heavy)["ok"] is False                                   # sellers in control
+
+
+def F_analyze_sell_heavy():
+    from desk import flow as F
+    return F.analyze([_tr(NOW - 10, "buy", 100, "a"), _tr(NOW - 20, "sell", 900, "b")], NOW)
+
+
+def test_rug_check_is_reused_while_waiting_for_momentum(monkeypatch):
+    calls = []
+    d, s, st, _ = _scalp_desk(monkeypatch, rug_calls=calls)
+    st["pair"] = dict(st["pair"], priceChange={"m5": 0.2, "h1": 5})
+    d.cycle(NOW)
+    st["pair"] = dict(st["pair"], priceChange={"m5": 2.5, "h1": 30})
+    d.cycle(NOW + C.SCALP_RECHECK_SEC)
+    assert "M" in s["positions"] and len(calls) == 1
+
+
+def test_scalp_reenters_after_cooldown_up_to_three_times_a_day(monkeypatch):
+    d, s, st, _ = _scalp_desk(monkeypatch)
+    t = NOW
+    for i in range(3):
+        d.cycle(t)
+        assert "M" in s["positions"], i
+        st["pair"] = dict(st["pair"], priceUsd=str(0.001 * 0.90))            # -10% -> stop
+        d.cycle(t + 30)
+        assert "M" not in s["positions"]
+        c = s["candidates"]["M"]
+        if i < 2:
+            assert c["status"] == "waiting" and c["next_check"] == t + 30 + C.SCALP_COOLDOWN_SEC
+        st["pair"] = dict(st["pair"], priceUsd="0.001")
+        t += 30 + C.SCALP_COOLDOWN_SEC
+    assert s["candidates"]["M"]["status"] != "waiting" and s["stats"]["bought"] == 3
+
+
+def test_exit_profile_s_rules():
+    def pos():
+        return {"entry": 1.0, "peak": 1.0, "opened": NOW, "qty": 10, "cost": 10, "symbol": "X"}
+    p = pos()
+    assert A.exit_decision(p, 0.95, 80_000, NOW + 60)[0] == 0
+    assert A.exit_decision(p, 0.939, 80_000, NOW + 90) == (1.0, A.exit_decision(pos(), 0.939, 80_000, NOW + 90)[1])
+    p = pos()                                                  # +7% then a 4% pullback -> lock the small win
+    A.exit_decision(p, 1.07, 80_000, NOW + 60)
+    frac, why = A.exit_decision(p, 1.07 * 0.955, 80_000, NOW + 120)
+    assert frac == 1.0 and "トレーリング" in why
+    p = pos()                                                  # +10% -> half, then the rest can't lose
+    frac, why = A.exit_decision(p, 1.10, 80_000, NOW + 60)
+    assert frac == pytest.approx(0.5) and "+10%" in why
+    assert A.exit_decision(p, 1.03, 80_000, NOW + 120)[0] == 0
+    assert A.exit_decision(p, 1.005, 80_000, NOW + 180)[0] == 1.0
+    p = pos()                                                  # flat and below entry after 20 minutes -> out
+    assert A.exit_decision(p, 0.99, 80_000, NOW + 19 * 60)[0] == 0
+    assert A.exit_decision(p, 0.99, 80_000, NOW + 20 * 60)[0] == 1.0
+    p = pos()                                                  # never longer than 45 minutes
+    assert A.exit_decision(p, 1.03, 80_000, NOW + 45 * 60)[0] == 1.0
+
+
+def test_one_minute_candles_score_strictly():
+    from desk import tracker as T
+    t0 = NOW
+    # one candle touches both +12% (take profit) and -7% (stop): the stop must win
+    both = [[t0 + 60, 1.0, 1.12, 0.93, 1.05], [t0 + 120, 1.05, 1.06, 1.0, 1.02], [t0 + 180, 1.02, 1.03, 1.0, 1.01]]
+    assert T.simulate(T.candle_path(t0, 1.0, both)) < -0.06
+    s = {"outcomes": [{"t0": t0, "p0": 1.0, "pool": "P", "sim": 0.5, "max_up": 0, "max_down": 0, "end": 0,
+                       "decision": "BUY", "reasons": [], "liq": 1, "score": 1, "sims": {}}]}
+    assert T.refine(s, lambda pool, a, b: both, now=t0 + T.TRACK_HOURS * 3600 + 200) == 1
+    o = s["outcomes"][0]
+    assert o["fine"] and o["sim"] < -0.06 and "S_勢いスキャル(採用中)" in o["sims"]
+
+
+def test_ohlcv_real_shape(monkeypatch):
+    from desk import flow as F
+    raw = {"data": {"attributes": {"ohlcv_list": [
+        [1795471560, 3.447e-06, 3.4516e-06, 3.4351e-06, 3.4373e-06, 3800.7],
+        [1795471500, 3.4522e-06, 3.456e-06, 3.4391e-06, 3.447e-06, 17796.4]]}}}
+    monkeypatch.setattr(F, "_last_call", {"t": 0.0})
+    monkeypatch.setattr(F.S, "get_json", lambda url, **k: raw)
+    c = F.ohlcv("P", 1795471500, 1795471600)
+    assert [x[0] for x in c] == [1795471500, 1795471560] and c[0][2] == 3.456e-06 and len(c[0]) == 5
+
+
+def test_scalp_candidates_expire_when_they_stop_trending():
+    s = P.new_state()
+    s["candidates"]["M"] = {"seen": NOW - 3 * 3600, "grad": NOW - 30 * 86400, "symbol": "OLD", "status": "waiting", "checks": 0}
+    s["candidates"]["N"] = {"seen": NOW - 3 * 3600, "refreshed": NOW - 60, "grad": None, "symbol": "HOT", "status": "waiting", "checks": 0}
+    assert A.Scanner().due(s, NOW) == ["N"] and s["candidates"]["M"]["status"] == "expired"

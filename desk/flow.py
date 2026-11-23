@@ -160,6 +160,19 @@ def score(f):
     return {"ok": True, "score": max(0, min(100, sc)), "reasons": why}
 
 
+def ohlcv(pool, t_from, t_to):
+    """1-minute candles [[ts, open, high, low, close], ...] (oldest first) between t_from and t_to."""
+    if not pool:
+        return None
+    d = _gt(f"/pools/{pool}/ohlcv/minute?aggregate=1&limit=1000&currency=usd&before_timestamp={int(t_to)}")
+    try:
+        rows = d["data"]["attributes"]["ohlcv_list"]
+    except (TypeError, KeyError):
+        return None
+    out = [[int(r[0])] + [float(x) for x in r[1:5]] for r in rows if t_from <= r[0] <= t_to]
+    return sorted(out)
+
+
 def sell_check(mint, usd, sol_price=None):
     """SELL SIMULATION: ask Jupiter for a quote selling ~our size of the token for SOL.
     Returns {"ok": True/False/None, "reason": str}. None = could not check (not a fail)."""
@@ -185,9 +198,10 @@ def sell_check(mint, usd, sol_price=None):
         return {"ok": None, "reason": f"売却テスト: 未確認（{type(e).__name__}）"}
 
 
-def trending_mints(limit=20):
-    """TRENDING / FOMO SCOUT: PumpSwap coins trending on GeckoTerminal right now."""
-    d = _gt("/trending_pools?duration=1h")
+def trending_mints(limit=20, duration="1h"):
+    """TRENDING / FOMO SCOUT: Solana memecoins trending on GeckoTerminal right now (5m / 1h lists).
+    Scalp strategy: any DEX. Sniper strategy: PumpSwap only."""
+    d = _gt(f"/trending_pools?duration={duration}")
     out = []
     if not isinstance(d, dict):
         return out
@@ -195,7 +209,8 @@ def trending_mints(limit=20):
         rel = row.get("relationships") or {}
         dex = ((rel.get("dex") or {}).get("data") or {}).get("id", "")
         base = ((rel.get("base_token") or {}).get("data") or {}).get("id", "")
-        if "pump" in dex and base.startswith("solana_"):
+        ok_dex = True if C.STRATEGY == "scalp" else "pump" in dex
+        if ok_dex and base.startswith("solana_") and not base.endswith(SOL):
             out.append({"mint": base[len("solana_"):], "rank": i + 1,
                         "symbol": ((row.get("attributes") or {}).get("name") or "").split(" /")[0]})
     return out[:limit]

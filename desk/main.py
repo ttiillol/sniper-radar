@@ -57,9 +57,9 @@ def credits_ok(state):
     return radar_used + state["credits"].get(mk, 0) + scanner.CALLS["n"] < scanner.MONTHLY_BUDGET
 
 
-STAGE_AGENT = {"Rug": "rug", "Sniper": "picker", "Risk": "sizer", "Flow": "flow", "Sell": "exec", "Reentry": "whale"}
+STAGE_AGENT = {"Momentum": "trend", "Rug": "rug", "Sniper": "picker", "Risk": "sizer", "Flow": "flow", "Sell": "exec", "Reentry": "whale"}
 STAGE_JA = {"Rug": "安全チェック", "Sniper": "点数", "Risk": "資金ルール", "Flow": "取引の流れ",
-            "Sell": "売却テスト", "Reentry": "再エントリー"}
+            "Sell": "売却テスト", "Reentry": "再エントリー", "Momentum": "勢い"}
 
 
 class Desk:
@@ -154,7 +154,13 @@ class Desk:
                                change_pct=round(chg * 100, 2), pnl=round(pnl, 2))
                 stop = why.startswith("損切り")
                 c = self.s["candidates"].get(mint)
-                if stop and mint not in self.s["positions"] and c and not c.get("reentry_used"):
+                if C.STRATEGY == "scalp":
+                    if mint not in self.s["positions"] and c and not c.get("reentry_used"):
+                        td = c.get("trades_day") or ["", 0]
+                        if not (td[0] == P.hst_day(now) and td[1] >= C.SCALP_MAX_TRADES_PER_COIN):
+                            c.update(status="waiting", next_check=now + C.SCALP_COOLDOWN_SEC, checks=0,
+                                     refreshed=int(now))   # same coin, next trade if momentum is still there
+                elif stop and mint not in self.s["positions"] and c and not c.get("reentry_used"):
                     # same coin, second answer if the facts change (whales pile in after our stop)
                     c.update(status="waiting", next_check=now + C.REENTRY_WAIT_SEC, reentry_used=True,
                              reentry=True)
@@ -185,6 +191,11 @@ class Desk:
         """Free checks before spending any RPC credits."""
         if not pair:
             return "データ不足: DexScreenerにペアが無い"
+        if C.STRATEGY == "scalp":
+            liq = (pair.get("liquidity") or {}).get("usd") or 0
+            if liq < C.MIN_LIQ_USD:
+                return f"流動性 ${liq:,.0f}（${C.MIN_LIQ_USD:,.0f}未満）"
+            return None
         if pair.get("dexId") != "pumpswap":
             return f"PumpSwap以外の取引所（{pair.get('dexId')}）"
         created = (pair.get("pairCreatedAt") or 0) / 1000
@@ -208,6 +219,7 @@ class Desk:
         cand = self.s["candidates"].setdefault(mint, {"seen": int(now), "grad": None, "symbol": "",
                                                       "status": "waiting", "checks": 0})
         cand["checks"] += 1
+        cand["last_eval"] = int(now)
         self.s["stats"]["evaluated"] += 1
         if pair and pair.get("pairCreatedAt"):
             cand["grad"] = pair["pairCreatedAt"] / 1000
@@ -224,7 +236,10 @@ class Desk:
 
         def reject(stage, reasons, score=None, **extra):
             cand["status"] = "rejected"
-            T.start(self.s, mint, sym, price0, liq0, "REJECT", reasons, score, now, facts=extra.get("facts"))
+            if stage in ("Rug", "Flow", "Sell"):
+                cand["hard_until"] = int(now) + 6 * 3600     # don't re-examine a dangerous coin for 6 hours
+            T.start(self.s, mint, sym, price0, liq0, "REJECT", reasons, score, now, facts=extra.get("facts"),
+                    pool=(pair or {}).get("pairAddress"))
             key = re.sub(r"\$?\d[\d,\.]*", "N", reasons[0].split("（")[0]).replace("上位N", "上位10")[:32]
             self.s["stats"]["rejected"][key] = self.s["stats"]["rejected"].get(key, 0) + 1
             P.log_decision("entry", mint, sym, "REJECT", f"[{stage}] " + " / ".join(reasons), **extra)
@@ -239,7 +254,16 @@ class Desk:
             radar["tokens"][mint] = cand["radar"]   # reuse the expensive early-buyer lookup
         L.step("work", f"審査中: 流動性 ${liq0 or 0:,.0f} ・ 保有者 ・ 狙撃ボット ・ まとめ買い ・ インサイダー ・ ロック状況を確認…",
                sym, mint, agent="rug", note=f"{sym} を審査中…")
-        rg = self.rug(mint, pair, self.s, radar, now)
+        cached = cand.get("rug_cache") if C.STRATEGY == "scalp" and cand.get("rug_until", 0) > now else None
+        if cached:
+            rg = {"ok": True, "reasons": ["全項目合格（30分以内の結果を再利用）"], "notes": [],
+                  "facts": dict(cached["facts"]), "creator": cached.get("creator")}
+        else:
+            rg = self.rug(mint, pair, self.s, radar, now)
+            if rg["ok"] and C.STRATEGY == "scalp":
+                cand["rug_cache"] = {"facts": {k: v for k, v in (rg.get("facts") or {}).items() if k != "flow"},
+                                     "creator": rg.get("creator")}
+                cand["rug_until"] = int(now) + C.SCALP_RUG_CACHE_SEC
         f = rg.get("facts") or {}
         if "block0" in f:
             cand["radar"] = {"block0": f["block0"], "snipers": f.get("snipers", 0)}
@@ -276,13 +300,27 @@ class Desk:
             if not fv["ok"]:
                 cand["reentry_used"] = True
                 return reject("Flow", fv["reasons"], facts=rg["facts"])
-        if cand.get("reentry"):
+        mom = None
+        if C.STRATEGY == "scalp":
+            mom = A.momentum(pair, fl)
+            if not mom["ok"]:
+                if cand["checks"] < C.SCALP_MAX_CHECKS:
+                    cand["next_check"] = now + C.SCALP_RECHECK_SEC
+                    L.step("wait", f"勢い待ち: {mom['reasons'][0]} — {C.SCALP_RECHECK_SEC}秒後にもう一度", sym, mint, "WAIT",
+                           agent="trend", note=f"{sym} {mom['reasons'][0][:30]}")
+                    return "watch"
+                return reject("Momentum", mom["reasons"], facts=rg["facts"])
+            L.note("trend", f"{sym} 勢いあり（{'・'.join(mom['reasons'][:2])}）", sym, "OK")
+        if cand.get("reentry") and C.STRATEGY != "scalp":
             if not fl or fl["burst_wallets"] < C.REENTRY_MIN_WHALES:
                 return reject("Reentry", [f"損切り後の再エントリー条件（大口{C.REENTRY_MIN_WHALES}人以上が2分で買う）を満たさず"],
                               facts=rg["facts"])
         L.step("work", "勢い・大口・話題性・取引の流れから点数を計算中…", sym, mint, agent="picker", note=f"{sym} の点数を計算中…")
         sn, wh, hy = A.sniper(pair), A.whale(rg["facts"], cand), A.hype(pair)
         score = A.entry_score(sn, wh, hy) + round((fv["score"] - 50) * C.FLOW_WEIGHT)
+        if mom:
+            score += round((mom["score"] - 50) * 0.5)
+            hy["reasons"] = mom["reasons"] + hy["reasons"]
         if cand.get("trending"):
             score += C.TRENDING_BONUS
             hy["reasons"].append(f"GeckoTerminalで注目{cand['trending']}位")
@@ -291,9 +329,10 @@ class Desk:
         why_x = {k: v for k, v in why.items() if k != "score"}      # score is passed on its own
         if not sn["ok"] or score < C.MIN_ENTRY_SCORE:
             if cand["checks"] < 4 and sn["ok"] and score >= 40:
-                cand["next_check"] = now + 300      # look again in 5 minutes
+                cand["next_check"] = now + (C.SCALP_RECHECK_SEC if C.STRATEGY == "scalp" else 300)
                 cand["score"] = score
-                T.start(self.s, mint, sym, price0, liq0, "WATCH", [], score, now, facts=rg["facts"])
+                T.start(self.s, mint, sym, price0, liq0, "WATCH", [], score, now, facts=rg["facts"],
+                        pool=(pair or {}).get("pairAddress"))
                 P.log_decision("entry", mint, sym, "WATCH", f"点数{score}（{C.MIN_ENTRY_SCORE}未満）— 5分後にまた確認", **why)
                 L.step("watch", f"点数{score}（合格は{C.MIN_ENTRY_SCORE}点）— 5分後にもう一度見る", sym, mint, "WATCH",
                        agent="picker", note=f"{sym} {score}点 → 5分後に再審査")
@@ -316,11 +355,15 @@ class Desk:
                                  f"点数{score}", now)
         cand["status"] = "bought"
         cand.pop("reentry", None)
+        day = P.hst_day(now)
+        cnt = cand.get("trades_day") or [day, 0]
+        cand["trades_day"] = [day, (cnt[1] if cnt[0] == day else 0) + 1]
         pos = self.s["positions"].get(mint)
         if pos is not None:
             pos["creator"] = rg["facts"].get("creator")
             pos["pool"] = (pair or {}).get("pairAddress")
-        T.start(self.s, mint, sym, price, rg["facts"]["liq"], "BUY", [], score, now, facts=rg["facts"])
+        T.start(self.s, mint, sym, price, rg["facts"]["liq"], "BUY", [], score, now, facts=rg["facts"],
+                pool=(pair or {}).get("pairAddress"))
         f = rg["facts"]
         N.send_async(f"BUY {sym}  ${rk['size']:.2f}",
                      f"点数{score} ・ 流動性 ${f.get('liq', 0):,.0f} ・ 上位10 {f.get('top10_pct')}%\n"
@@ -377,6 +420,11 @@ class Desk:
             pairs = self.fetch_pairs(want)
             prices = {m: S.pair_price(pairs.get(m)) if pairs.get(m) else None for m in want}
         T.update(self.s, prices, now)
+        if C.FLOW_ON:
+            try:
+                T.refine(self.s, F.ohlcv, limit=2, now=now)      # 1-minute candles for finished coins
+            except Exception as e:
+                self._error("refine", "", e)
 
     def alerts(self, now=None):
         now = now or time.time()
@@ -514,19 +562,32 @@ async def run_loop(minutes):
             desk._error("day_report", "", e)
 
     def scout():
-        n = 0
-        for t in F.trending_mints():
+        n, now = 0, time.time()
+        seen = {}
+        for dur in ("5m", "1h"):
+            for t in F.trending_mints(duration=dur):
+                seen.setdefault(t["mint"], t)
+        for t in seen.values():
             c = desk.s["candidates"].get(t["mint"])
             if c is not None:
                 c["trending"] = t["rank"]
+                c["refreshed"] = int(now)
+                td = c.get("trades_day") or ["", 0]
+                if (C.STRATEGY == "scalp" and c.get("status") in ("rejected", "expired", "skipped", "error")
+                        and now - c.get("last_eval", c["seen"]) > C.SCALP_RECHECK_REJECTED_MIN * 60
+                        and now >= c.get("hard_until", 0) and not c.get("reentry_used")
+                        and not (td[0] == P.hst_day(now) and td[1] >= C.SCALP_MAX_TRADES_PER_COIN)):
+                    c.update(status="waiting", checks=0, next_check=0)     # it trends again: look again
+                    n += 1
             elif t["mint"] not in desk.s["positions"]:
                 desk.s["candidates"][t["mint"]] = {"seen": int(time.time()), "grad": None, "symbol": t["symbol"],
                                                    "status": "waiting", "checks": 0, "trending": t["rank"]}
                 n += 1
         if n:
-            L.step("new", f"GeckoTerminalの注目ランキングから{n}件を審査待ちに追加", agent="trend")
+            L.step("new", f"GeckoTerminalの注目ランキング（5分・1時間）から{n}件を審査待ちに追加", agent="scout",
+                   note=f"注目ランキングから{n}件")
         else:
-            L.note("trend", "注目ランキングを確認（新しい候補なし）")
+            L.note("scout", "注目ランキングを確認（新しい候補なし）")
 
     def check_sources():
         r = SC.run()
