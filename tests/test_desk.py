@@ -430,10 +430,10 @@ def test_buy_and_stop_send_notifications(monkeypatch):
     monkeypatch.setattr(M, "credits_ok", lambda st: True)
     monkeypatch.setattr(M, "load_radar", lambda: {"bots": set(), "tokens": {}})
     d.cycle(NOW)
-    assert any(t.startswith("🟢 BUY") for t in sent)
+    assert any(t.startswith("BUY") for t in sent)
     prices["p"] = 0.0006                                   # -40% -> stop (live profile stops at -30%)
     d.cycle(NOW + 60)
-    assert any(t.startswith("🔴 STOP") for t in sent)
+    assert any(t.startswith("STOP") for t in sent)
     assert "残高" in d.summary_text()
 
 
@@ -507,7 +507,7 @@ def test_live_feed_shows_each_step(monkeypatch):
     results = [f["r"] for f in live["feed"]]
     assert "BUY" in results and any(f["s"] == "GOOD" for f in live["feed"])
     assert any("審査中" in f["x"] for f in live["feed"])        # the "checking this coin now" step
-    assert live["now"]["icon"] == "💤" and live["status"]["open"] == 1
+    assert live["now"]["icon"] == "idle" and live["status"]["open"] == 1
 
 
 def test_live_feed_can_never_stop_the_desk(monkeypatch, tmp_path):
@@ -515,7 +515,7 @@ def test_live_feed_can_never_stop_the_desk(monkeypatch, tmp_path):
     blocker = tmp_path / "file"
     blocker.write_text("x")
     monkeypatch.setattr(C, "LIVE_FILE", blocker / "sub" / "live.json")   # impossible path
-    L.step("🔍", "test", "SYM", "MINT")                                  # must not raise
+    L.step("work", "test", "SYM", "MINT")                                  # must not raise
     L.idle("wait")
     L.flush()
 

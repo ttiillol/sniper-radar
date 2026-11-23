@@ -132,5 +132,5 @@ def maybe_day_report(state, send, now=None):
     if last == today:
         return False
     state["report_day"] = today
-    send(f"🌙 1日のまとめ {last}", day_report(state, last))
+    send(f"1日のまとめ {last}", day_report(state, last))
     return True

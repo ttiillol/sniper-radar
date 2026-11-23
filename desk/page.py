@@ -65,11 +65,11 @@ a{color:var(--acc);text-decoration:none}h1{font-size:20px;margin:4px 0 2px}.sub{
 .L-BUY{background:#0f2e1d;color:var(--grn)}.L-SELL{background:#16263f;color:var(--acc)}.L-STOP{background:#3a1416;color:var(--red)}.L-SKIP{background:#2a2d35;color:var(--mut)}
 .warn{font-size:12.5px;color:var(--mut)}.warn b{color:var(--org)}
 /* live "now doing" card */
-.lv{border-color:#3a1f24}.dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--red);margin-right:6px;animation:pulse 1.2s infinite}
+.lv{border-color:var(--line)}.dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--red);margin-right:6px;animation:pulse 1.2s infinite}
 .dot.off{background:var(--mut);animation:none}
 @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(255,93,93,.7)}70%{box-shadow:0 0 0 9px rgba(255,93,93,0)}100%{box-shadow:0 0 0 0 rgba(255,93,93,0)}}
 .now{background:#11141a;border-radius:12px;padding:12px;margin-bottom:10px}
-.now .t{font-size:15px;font-weight:700;line-height:1.45}.now .i{font-size:22px;margin-right:6px;vertical-align:-3px}
+.now .t{font-size:15px;font-weight:700;line-height:1.45}.now .k{width:10px;height:10px;margin:0 8px 0 0;vertical-align:1px}
 .sym{display:inline-block;background:#232836;color:var(--acc);border-radius:7px;padding:1px 8px;margin-right:6px;font:700 13px ui-monospace,Menlo,monospace}
 .scan{height:4px;border-radius:4px;background:#1d2130;overflow:hidden;margin-top:10px;position:relative}
 .scan i{position:absolute;top:0;left:-40%;width:40%;height:100%;background:linear-gradient(90deg,transparent,var(--acc),transparent);animation:sweep 1.1s linear infinite}
@@ -77,6 +77,8 @@ a{color:var(--acc);text-decoration:none}h1{font-size:20px;margin:4px 0 2px}.sub{
 @keyframes sweep{to{left:100%}}
 .ms{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}.ms span{background:#11141a;border-radius:8px;padding:4px 8px;font-size:11.5px;color:var(--mut)}.ms b{color:var(--tx)}
 .lf{display:flex;gap:8px;align-items:flex-start;padding:7px 4px;border-top:1px solid var(--line);font-size:13px;border-radius:6px}
+.k{display:inline-block;width:8px;height:8px;border-radius:50%;flex:none;background:var(--acc)}.lf .k{margin-top:6px}
+.k-buy{background:var(--grn)}.k-sell{background:var(--acc)}.k-stop,.k-error{background:var(--red)}.k-reject,.k-skip,.k-idle,.k-start{background:#5b6170}.k-wait,.k-watch{background:var(--org)}.k-new{background:#b69cff}.k-work,.k-check,.k-hold{background:var(--acc)}
 .lf .ic{width:22px;text-align:center;flex:none}.lf .ag{flex:none;width:44px;text-align:right;font-size:11px;color:var(--mut);padding-top:2px}
 .new{animation:flash 2.2s ease-out}@keyframes flash{0%{background:#23314d;transform:translateY(-6px);opacity:.2}25%{opacity:1;transform:none}100%{background:transparent}}
 .rr{display:flex;gap:8px;align-items:center;padding:7px 0;border-top:1px solid var(--line);font-size:13px}
@@ -88,8 +90,8 @@ a{color:var(--acc);text-decoration:none}h1{font-size:20px;margin:4px 0 2px}.sub{
 .r-REJECT,.r-SKIP{background:#2a2d35;color:var(--mut)}.r-WATCH,.r-WAIT{background:#3a2810;color:var(--org)}.r-NEW{background:#26203a;color:#b69cff}
 #lfeed{max-height:430px;overflow-y:auto}
 </style></head><body>
-<div class="nav"><a href="./">🎯 レーダー</a><a class="on" href="desk.html">📈 デスク</a></div>
-<h1>📈 練習売買デスク <span class="small">（ペーパートレード）</span></h1>
+<div class="nav"><a href="./">レーダー</a><a class="on" href="desk.html">デスク</a></div>
+<h1>練習売買デスク <span class="small">（ペーパートレード）</span></h1>
 <div class="sub" id="upd"></div>
 <div id="banner"></div>
 <div class="card lv"><h2><span class="dot" id="ldot"></span>いま実行中 <span class="small" id="lage">接続中…</span></h2>
@@ -107,7 +109,7 @@ a{color:var(--acc);text-decoration:none}h1{font-size:20px;margin:4px 0 2px}.sub{
 </div>
 <div class="card" id="rc"></div>
 <div class="card" id="bvl"></div>
-<div class="card"><h2>📡 ライブフィード <span class="small">（1分ごとに自動更新）</span></h2><div id="feed"></div></div>
+<div class="card"><h2>売買の記録 <span class="small">（1分ごとに自動更新）</span></h2><div id="feed"></div></div>
 <div class="card" id="vc"></div>
 <div class="card" id="hc"></div>
 <div class="card"><h2>保有中</h2><div id="poss"></div></div>
@@ -116,7 +118,7 @@ a{color:var(--acc);text-decoration:none}h1{font-size:20px;margin:4px 0 2px}.sub{
 <div id="dec"></div></div>
 <div class="card"><h2>見送った理由ランキング</h2><div id="rej"></div></div>
 <div class="card" id="gapc"><h2>止まっていた時間の記録</h2><div id="gaps"></div></div>
-<div class="card warn"><h2>⚠️ 注意</h2>
+<div class="card warn"><h2>注意</h2>
 これは<b>練習（ペーパー）</b>です。本物のお金は動きません。ミームコインは数分で価値がほぼゼロになることがあり、損切りが効かずに大きく負けることがあります。
 この画面の成績が良くても、本番で同じ結果になる保証はありません。<br><br>
 ルール：1回 $5〜10 ／ 売り方E：−30%で損切り／+25%まで上がったら高値から−12%で全部利確（小さな勝ちを確保）／+50%で1/3売って残りは負けなし／+150%で1/3／最後の1/3は高値から−35%まで持つ ／ 最大5件 ／ 1日 −$10 で新規停止 ／ 累計 −$30 で完全停止 ／ 急落で損切りが効かない前提（−50%）で枠を計算</div>
@@ -135,8 +137,8 @@ const dl=Math.max(0,-D.today),tl=Math.max(0,-D.realized);
 $("#dl").textContent=`${usd(dl)} / ${usd(D.limits.daily)}`;$("#dlb").style.width=Math.min(100,dl/D.limits.daily*100)+"%";
 $("#tl").textContent=`${usd(tl)} / ${usd(D.limits.total)}`;$("#tlb").style.width=Math.min(100,tl/D.limits.total*100)+"%";
 const stale=D.heartbeat&&Date.now()/1000-D.heartbeat>3*3600;
-$("#banner").innerHTML=D.halted?`<div class="banner b-red">⛔ 完全停止中：${D.halted}</div>`:D.kill?`<div class="banner b-red">⛔ 停止ファイルにより停止中</div>`:
- dl>=D.limits.daily?`<div class="banner b-org">⏸ 今日の損失上限に到達 — 明日まで新規購入なし</div>`:stale?`<div class="banner b-org">⚠️ 3時間以上更新されていません</div>`:`<div class="banner b-grn">● 稼働中（練習モード）</div>`;
+$("#banner").innerHTML=D.halted?`<div class="banner b-red">完全停止中：${D.halted}</div>`:D.kill?`<div class="banner b-red">停止ファイルにより停止中</div>`:
+ dl>=D.limits.daily?`<div class="banner b-org">今日の損失上限に到達 — 明日まで新規購入なし</div>`:stale?`<div class="banner b-org">3時間以上更新されていません</div>`:`<div class="banner b-grn">● 稼働中（練習モード）</div>`;
 const P=Object.entries(D.positions);
 $("#poss").innerHTML=P.length?P.map(([m,p])=>`<div class="row"><b>${(p.symbol||"?").replace(/</g,"")}</b> ${usd(p.cost)} ・ ${ago(p.opened)}に購入${p.half_sold?" ・ 半分利確済":""}
  <div class="small">買値 ${p.entry.toPrecision(4)} ・ 最高値 ${(p.peak/p.entry*100-100).toFixed(1)}% ・ <a href="https://dexscreener.com/solana/${m}" target="_blank" rel="noopener">チャート</a></div></div>`).join(""):'<div class="small">保有なし</div>';
@@ -147,7 +149,7 @@ $("#poss").innerHTML=P.length?P.map(([m,p])=>`<div class="row"><b>${(p.symbol||"
     <span class="small">${v.n}件</span><span class="small" style="width:70px;text-align:right">勝率 ${pct(v.win)}</span><b class="${v.avg>0?"pos":"neg"}" style="width:62px;text-align:right">${v.avg>0?"+":""}${pct(v.avg)}</b></div>`).join("")+"</div>"};
   const NMD={BUY:"買った",REJECT:"見送った",WATCH:"様子見した"};
   const dec=Object.fromEntries(Object.entries(V.decision||{}).map(([k,v])=>[NMD[k]||k,v]));
-  $("#vc").innerHTML=`<h2>🔬 検証：もし買っていたら <span class="small">（6時間追跡・4つの売り方を同じ値動きで比較）</span></h2>
+  $("#vc").innerHTML=`<h2>検証：もし買っていたら <span class="small">（6時間追跡・4つの売り方を同じ値動きで比較）</span></h2>
   <div class="small">追跡中 ${D.tracking}件 ・ 結果が出た ${D.outcomes_n}件。見送ったコインの成績が良ければ、そのルールは厳しすぎる証拠です。</div>
   ${D.outcomes_n?tbl("売り方の比較（同じコイン・違う売りルール）",V.profiles)+tbl("判断別",dec)+tbl("見送り理由別",V.reason)+tbl("流動性別",V.liq,["$30k以上","$10k〜30k","$5k〜10k","$5k未満","不明"])+tbl("点数別",V.score,["60以上","40〜59","40未満"])+tbl("保有者数別",V.holders,["75人未満","75〜300人","300人以上"])+tbl("狙撃ボットの保有率別",V.snipers,["5%未満","5〜20%","20%以上"])+tbl("作成者の過去",V.creator):'<div class="small" style="margin-top:8px">まだ結果がありません（審査から4時間後に出始めます）</div>'}`;
 })();
@@ -165,7 +167,7 @@ let F="all";function drawDec(){const L=D.decisions.filter(d=>F==="all"||d.action
  <div class="small">${(d.reason||"").replace(/</g,"")}</div></div>`).join(""):'<div class="small">まだ記録がありません</div>'}
 document.querySelectorAll(".f").forEach(e=>e.onclick=()=>{document.querySelectorAll(".f").forEach(x=>x.classList.remove("on"));e.classList.add("on");F=e.dataset.f;drawDec()});drawDec();
 (function(){const st=D.stats,pf=Object.entries(st.prefiltered||{}).sort((a,b)=>b[1]-a[1]).slice(0,4).map(([k,v])=>k+" "+v).join("・")||"なし";
-$("#hc").innerHTML=`<h2>🩺 デスクの調子</h2><div class="small" style="line-height:1.9">
+$("#hc").innerHTML=`<h2>デスクの調子</h2><div class="small" style="line-height:1.9">
 卒業コインの受信 ${st.migrations||0} ・ 補充 ${st.backfilled||0} ・ 審査 ${st.evaluated||0}<br>
 無料で除外：${pf}<br>
 エラー ${st.errors||0} 件 ・ データ窓口 ${D.rpc==="helius"?"Helius（専用）":"公共（混みやすい）"} ・ 今月 ${(D.credits||0).toLocaleString()} クレジット
@@ -175,7 +177,7 @@ $("#rej").innerHTML=R.length?R.map(([k,v])=>`<div class="row" style="display:fle
 $("#gaps").innerHTML=D.gaps.length?D.gaps.map(g=>`<div class="row">${ago(g.ts)} ・ ${Math.round(g.sec/60)}分停止 ・ 再開時の保有 ${g.open}件</div>`).join(""):'<div class="small">記録なし</div>';
 (function(){
   const J=D.journal||{n:0},pct=x=>(x>0?"+":"")+(x*100).toFixed(1)+"%",Rf=x=>x==null?"-":(x>0?"+":"")+x.toFixed(2)+"R";
-  let h=`<h2>📐 成績（R倍数） <span class="small">1R＝買った額×${Math.round(D.risk_pct*100)}%（損切り幅＝計画したリスク）</span></h2>`;
+  let h=`<h2>成績（R倍数） <span class="small">1R＝買った額×${Math.round(D.risk_pct*100)}%（損切り幅＝計画したリスク）</span></h2>`;
   if(!J.n){h+='<div class="small">まだ終わったトレードがありません。売り終わると、ここに1件ずつ「何R勝った／負けた」が並びます。</div>'}
   else{
     h+=`<div class="grid">
@@ -200,7 +202,7 @@ $("#gaps").innerHTML=D.gaps.length?D.gaps.map(g=>`<div class="row">${ago(g.ts)} 
   let msg='まだ件数が少ないので判断できません（どちらも20件以上で目安になります）';
   if(B.sim_bought&&B.live&&B.sim_bought.n>=20&&B.live.n>=20){const d=(B.live.avg-B.sim_bought.avg)*100;
     msg=Math.abs(d)<5?'検証と実際がほぼ同じ — 検証の数字を信用してルール調整できます':d<0?`実際が検証より ${Math.abs(d).toFixed(1)}ポイント悪い — 手数料・すべり・急落時の売り遅れが原因の可能性。検証だけで判断しないこと`:`実際が検証より ${d.toFixed(1)}ポイント良い — たまたまの可能性も。件数を増やして確認`}
-  $("#bvl").innerHTML=`<h2>🧪 検証 vs 実際 <span class="small">（バックテストどおりに勝てているか）</span></h2>
+  $("#bvl").innerHTML=`<h2>検証 vs 実際 <span class="small">（バックテストどおりに勝てているか）</span></h2>
   <div class="cmp">${box("検証<br>（買ったコイン）",B.sim_bought)}${box("実際<br>（練習売買）",B.live)}${box("参考<br>（審査した全コイン）",B.sim_all)}</div>
   <div class="small" style="margin-top:8px">検証＝同じコインに売り方Eを当てはめた計算上の成績。${msg}</div>`;
 })();
@@ -211,10 +213,10 @@ $("#gaps").innerHTML=D.gaps.length?D.gaps.map(g=>`<div class="row">${ago(g.ts)} 
   const seen=new Set();let first=true,last=null,fails=0;
   function paint(){
     if(!last){$("#lage").textContent=fails>2?"ライブ情報なし（iMacが新しい版で再起動すると表示されます）":"接続中…";$("#ldot").className="dot off";return}
-    const L=last,n=L.now||{},age=Date.now()/1000-L.ts,busy=n.icon!=="💤";
+    const L=last,n=L.now||{},age=Date.now()/1000-L.ts,busy=n.icon!=="idle"&&n.icon!=="start";
     $("#ldot").className=age>90?"dot off":"dot";
-    $("#lage").textContent=age>90?"⚠️ "+sec(L.ts)+"から動きがありません":"・ "+sec(L.ts)+"に更新";
-    $("#lnow").innerHTML=`<span class="i">${esc(n.icon)}</span>${n.sym?`<span class="sym">${esc(n.sym)}</span>`:""}${esc(n.text)}`;
+    $("#lage").textContent=age>90?sec(L.ts)+"から動きがありません":"・ "+sec(L.ts)+"に更新";
+    $("#lnow").innerHTML=`<span class="k k-${esc(n.icon)}"></span>${n.sym?`<span class="sym">${esc(n.sym)}</span>`:""}${esc(n.text)}`;
     $("#lsince").textContent=n.since?(busy?"この作業を始めて "+Math.max(0,Math.round(Date.now()/1000-n.since))+"秒":"待機 "+Math.max(0,Math.round(Date.now()/1000-n.since))+"秒"):"";
     $("#lscan").className="scan"+(busy?"":" idle");
     document.querySelectorAll("#lfeed .ag").forEach(e=>e.textContent=sec(+e.dataset.t));
@@ -224,7 +226,7 @@ $("#gaps").innerHTML=D.gaps.length?D.gaps.map(g=>`<div class="row">${ago(g.ts)} 
     $("#lms").innerHTML=st.cash!=null?`<span>残高 <b>$${(+st.cash).toFixed(2)}</b></span><span>保有 <b>${st.open}</b></span><span>審査済 <b>${st.evaluated}</b></span><span>審査待ち <b>${st.waiting}</b></span><span>買い <b>${st.bought}</b></span><span>処理ステップ <b>${(L.steps||0).toLocaleString()}</b></span>`:"";
     $("#lfeed").innerHTML=(L.feed||[]).map(f=>{const k=f.t+f.x,isNew=!first&&!seen.has(k);seen.add(k);
       const s=f.s?(f.m?`<a class="sym" href="https://dexscreener.com/solana/${encodeURIComponent(f.m)}" target="_blank" rel="noopener">${esc(f.s)}</a>`:`<span class="sym">${esc(f.s)}</span>`):"";
-      return `<div class="lf${isNew?" new":""}"><span class="ic">${esc(f.i)}</span><div style="flex:1;min-width:0">${s}${esc(f.x)}${f.r&&RN[f.r]?`<span class="r r-${esc(f.r)}">${RN[f.r]}</span>`:""}</div><span class="ag" data-t="${f.t}">${sec(f.t)}</span></div>`}).join("")||'<div class="small">まだ動きがありません</div>';
+      return `<div class="lf${isNew?" new":""}"><span class="k k-${esc(f.i)}"></span><div style="flex:1;min-width:0">${s}${esc(f.x)}${f.r&&RN[f.r]?`<span class="r r-${esc(f.r)}">${RN[f.r]}</span>`:""}</div><span class="ag" data-t="${f.t}">${sec(f.t)}</span></div>`}).join("")||'<div class="small">まだ動きがありません</div>';
     first=false;
   }
   async function poll(){

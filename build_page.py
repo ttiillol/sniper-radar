@@ -87,8 +87,8 @@ button{margin-top:8px;width:100%;padding:12px;border:0;border-radius:10px;backgr
 .hrow{display:flex;justify-content:space-between;font-size:13px;padding:3px 0}.ok{color:var(--grn)}.warn{color:var(--org)}.bad{color:var(--red)}
 .help{font-size:12.5px;color:var(--mut)}.help b{color:var(--tx)}
 </style></head><body>
-<div style="display:flex;gap:8px;margin-bottom:12px"><a href="./" style="flex:1;text-align:center;padding:8px;border-radius:10px;background:var(--acc);color:#04122a;font-weight:700;font-size:13px;text-decoration:none">🎯 レーダー</a><a href="desk.html" style="flex:1;text-align:center;padding:8px;border-radius:10px;background:var(--card);border:1px solid var(--line);color:var(--acc);font-size:13px;text-decoration:none">📈 デスク</a></div>
-<h1>🎯 狙撃ボット・レーダー</h1>
+<div style="display:flex;gap:8px;margin-bottom:12px"><a href="./" style="flex:1;text-align:center;padding:8px;border-radius:10px;background:var(--acc);color:#04122a;font-weight:700;font-size:13px;text-decoration:none">レーダー</a><a href="desk.html" style="flex:1;text-align:center;padding:8px;border-radius:10px;background:var(--card);border:1px solid var(--line);color:var(--acc);font-size:13px;text-decoration:none">デスク</a></div>
+<h1>狙撃ボット・レーダー</h1>
 <div class="sub" id="upd"></div>
 
 <div class="card"><div class="stats">
@@ -99,16 +99,16 @@ button{margin-top:8px;width:100%;padding:12px;border:0;border-radius:10px;backgr
 
 <div class="card" id="health"></div>
 
-<div class="card"><h2>🔎 この財布、真似して大丈夫？</h2>
+<div class="card"><h2>この財布、真似して大丈夫？</h2>
 <input id="q" placeholder="財布アドレスを貼り付け" autocomplete="off" autocapitalize="off" spellcheck="false">
 <button id="go">チェック</button><div id="res"></div></div>
 
 <div class="card">
 <div class="tabs"><div class="tab on" data-t="w">要注意の財布</div><div class="tab" data-t="t">最近のコイン</div></div>
-<button id="bulk" style="margin:0 0 10px">🚫 ボット濃厚の財布をまとめてコピー</button>
+<button id="bulk" style="margin:0 0 10px">ボット濃厚の財布をまとめてコピー</button>
 <div id="list"></div></div>
 
-<div class="card"><h2>👥 いつも一緒に買う財布グループ</h2><div id="grp"></div></div>
+<div class="card"><h2>いつも一緒に買う財布グループ</h2><div id="grp"></div></div>
 
 <div class="card help"><h2>見方</h2>
 <b>同ブロック買い</b>：コインが作られたのと同じ瞬間に買った財布。作った本人の仲間（まとめ買い）の可能性が高い。<br>
@@ -134,7 +134,7 @@ const RS={rate_limited:"窓口が混雑",timeout:"応答が遅い",network:"通�
   const tried=s.checked+s.skipped, pct=tried?Math.round(s.checked/tried*100):0, cls=pct>=90?"ok":pct>=70?"warn":"bad";
   const rs=Object.entries(s.reasons||{}).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`${RS[k]||k} ${v}`).join("・")||"なし";
   const mk=new Date().toISOString().slice(0,7), cr=(D.meta.credits||{})[mk];
-  $("#health").innerHTML=`<h2>🩺 直近の実行の調子</h2>
+  $("#health").innerHTML=`<h2>直近の実行の調子</h2>
   <div class="hrow"><span>見つけた新コイン</span><b>${s.seen}</b></div>
   <div class="hrow"><span>調べきれた割合</span><b class="${cls}">${pct}%（${s.checked}/${tried}）</b></div>
   ${s.sources?`<div class="hrow"><span>新コインの入手元</span><span class="small">PumpPortal ${s.sources.ws} ・ 予備ルート ${s.sources.poll} ・ 接続失敗 ${s.sources.ws_errors}</span></div>`:""}
@@ -148,9 +148,9 @@ const TT=Math.max(D.meta.tokens_total||1,1);
 function check(){
   const a=$("#q").value.trim();if(!a){return}
   const h=D.all[a];let v;
-  if(!h) v=`<div class="verdict v-grn">✅ 記録なし</div><div class="small" style="margin-top:6px">調べた${(D.meta.tokens_total||0).toLocaleString()}コインの中では、早撃ちしていません（安全の保証ではありません）。</div>`;
+  if(!h) v=`<div class="verdict v-grn">記録なし</div><div class="small" style="margin-top:6px">調べた${(D.meta.tokens_total||0).toLocaleString()}コインの中では、早撃ちしていません（安全の保証ではありません）。</div>`;
   else{const[c,b]=h;const cls=c>=5?"v-red":"v-org";
-    v=`<div class="verdict ${cls}">${c>=5?"🚫 ボット濃厚 — コピー対象外":c>=3?"⚠️ 狙撃の疑い":"⚠️ 早撃ちあり"}</div>
+    v=`<div class="verdict ${cls}">${c>=5?"ボット濃厚 — コピー対象外":c>=3?"狙撃の疑い":"早撃ちあり"}</div>
     <div class="small" style="margin-top:6px">早撃ち ${c} 回（うち同ブロック買い ${b} 回）${b>=2?"<br>→ コイン作者のまとめ買い用の財布の可能性あり":""}</div>`}
   $("#res").innerHTML=v+`<div class="small" style="margin-top:6px">${link(a)}</div>`;
 }
@@ -171,10 +171,10 @@ function tList(){
 }
 let tab="w";const draw=()=>{$("#list").innerHTML=tab==="w"?wList():tList()};
 document.querySelectorAll(".tab").forEach(el=>el.onclick=()=>{document.querySelectorAll(".tab").forEach(x=>x.classList.remove("on"));el.classList.add("on");tab=el.dataset.t;draw()});
-$("#list").addEventListener("click",e=>{const b=e.target.closest(".copy");if(!b)return;navigator.clipboard?.writeText(b.dataset.a).then(()=>{b.textContent="✓"}).catch(()=>{$("#q").value=b.dataset.a;check();scrollTo(0,0)})});
+$("#list").addEventListener("click",e=>{const b=e.target.closest(".copy");if(!b)return;navigator.clipboard?.writeText(b.dataset.a).then(()=>{b.textContent="コピー済"}).catch(()=>{$("#q").value=b.dataset.a;check();scrollTo(0,0)})});
 $("#bulk").onclick=()=>{const list=D.ranked.filter(r=>r[1]>=5).map(r=>r[0]);const b=$("#bulk");
   if(!list.length){b.textContent="まだボット濃厚の財布はありません";return}
-  navigator.clipboard?.writeText(list.join("\n")).then(()=>{b.textContent=`✓ ${list.length}個コピーしました`}).catch(()=>{b.textContent="コピーできませんでした"})};
+  navigator.clipboard?.writeText(list.join("\n")).then(()=>{b.textContent=`${list.length}個コピーしました`}).catch(()=>{b.textContent="コピーできませんでした"})};
 $("#grp").innerHTML=(D.groups||[]).length?D.groups.map(([ws,n],i)=>`<div class="row"><div class="grow"><b>グループ${i+1}</b> <span class="tag t-red">${ws.length}財布</span> <span class="small">${n}コインで同時に早撃ち</span>
   <div class="small">${ws.slice(0,6).map(a=>link(a)).join(" ")}${ws.length>6?" …":""}</div></div></div>`).join(""):'<div class="small">まだ見つかっていません（3コイン以上で一緒に早撃ちした財布をまとめます）</div>';
 draw();

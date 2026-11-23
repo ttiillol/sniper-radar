@@ -35,7 +35,7 @@ if [ -x bin/cloudflared ]; then
   done
   if [ -n "$U" ]; then
     echo "$U/desk.html" > data/dashboard_url.txt
-    ./.venv/bin/python -c "from desk import notify as N; N.send('📱 スマホ用ダッシュボード', 'タップで開きます（iMacが再起動するとアドレスが変わり、新しいアドレスをまた通知します）', tags=['iphone'], click='$U/desk.html')"
+    ./.venv/bin/python -c "from desk import notify as N; N.send('スマホ用ダッシュボード', 'タップで開きます（iMacが再起動するとアドレスが変わり、新しいアドレスをまた通知します）', click='$U/desk.html')"
   fi
 fi
 

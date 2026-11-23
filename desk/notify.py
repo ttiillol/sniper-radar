@@ -41,7 +41,7 @@ def send(title, message, tags=None, click=None, priority=3):
         _state["last"] = time.time()
         _state["count"] += 1
     body = {"topic": TOPIC, "title": title[:120], "message": message[:1500],
-            "tags": tags or [], "priority": priority}
+            "tags": [], "priority": priority}   # no emoji tags (plain design)
     if click:
         body["click"] = click
     try:

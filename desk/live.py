@@ -14,7 +14,7 @@ from . import config as C
 MAX_FEED = 40
 _lock = threading.Lock()
 _feed = deque(maxlen=MAX_FEED)
-_now = {"text": "起動中…", "icon": "⏳", "since": 0}
+_now = {"text": "起動中…", "icon": "start", "since": 0}
 _counts = {"steps": 0}
 _extra = {}
 
@@ -38,7 +38,7 @@ def idle(text):
     """Waiting between rounds: shown as the current action, not added to the feed."""
     try:
         with _lock:
-            _now.update(text=text, icon="💤", sym="", mint="", since=time.time())
+            _now.update(text=text, icon="idle", sym="", mint="", since=time.time())
         flush()
     except Exception:
         pass
@@ -72,4 +72,4 @@ def reset():
         _feed.clear()
         _counts["steps"] = 0
         _extra.clear()
-        _now.update(text="起動中…", icon="⏳", sym="", mint="", since=0)
+        _now.update(text="起動中…", icon="start", sym="", mint="", since=0)
