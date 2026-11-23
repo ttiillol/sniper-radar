@@ -157,7 +157,7 @@ class Desk:
 
         def reject(stage, reasons, score=None, **extra):
             cand["status"] = "rejected"
-            T.start(self.s, mint, sym, price0, liq0, "REJECT", reasons, score, now)
+            T.start(self.s, mint, sym, price0, liq0, "REJECT", reasons, score, now, facts=extra.get("facts"))
             key = re.sub(r"\$?\d[\d,\.]*", "N", reasons[0].split("（")[0]).replace("上位N", "上位10")[:32]
             self.s["stats"]["rejected"][key] = self.s["stats"]["rejected"].get(key, 0) + 1
             P.log_decision("entry", mint, sym, "REJECT", f"[{stage}] " + " / ".join(reasons), **extra)
@@ -181,19 +181,19 @@ class Desk:
         if not sn["ok"] or score < C.MIN_ENTRY_SCORE:
             if cand["checks"] < 4 and sn["ok"] and score >= 40:
                 cand["next_check"] = now + 300      # look again in 5 minutes
-                T.start(self.s, mint, sym, price0, liq0, "WATCH", [], score, now)
+                T.start(self.s, mint, sym, price0, liq0, "WATCH", [], score, now, facts=rg["facts"])
                 P.log_decision("entry", mint, sym, "WATCH", f"点数{score}（{C.MIN_ENTRY_SCORE}未満）— 5分後にまた確認", **why)
                 return "watch"
             return reject("Sniper", sn["reasons"] if not sn["ok"] else [f"点数{score}（{C.MIN_ENTRY_SCORE}未満）"],
-                          score=score, **why)
+                          score=score, facts=rg["facts"], **why)
         rk = A.risk(self.s, pair, now)
         if not rk["ok"]:
-            return reject("Risk", rk["reasons"], score=score, **why)
+            return reject("Risk", rk["reasons"], score=score, facts=rg["facts"], **why)
         price = S.pair_price(pair)
         fill, slip = P.paper_buy(self.s, mint, sym, rk["size"], price, rg["facts"]["liq"],
                                  f"点数{score}", now)
         cand["status"] = "bought"
-        T.start(self.s, mint, sym, price, rg["facts"]["liq"], "BUY", [], score, now)
+        T.start(self.s, mint, sym, price, rg["facts"]["liq"], "BUY", [], score, now, facts=rg["facts"])
         f = rg["facts"]
         N.send_async(f"🟢 BUY {sym}  ${rk['size']:.2f}",
                      f"点数{score} ・ 流動性 ${f.get('liq', 0):,.0f} ・ 上位10 {f.get('top10_pct')}%\n"

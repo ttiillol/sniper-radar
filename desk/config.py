@@ -43,6 +43,16 @@ MIN_LP_LOCKED_PCT = 0.95
 MAX_BLOCK0_BUNDLERS = 2             # 3+ wallets bought in the creation block -> fail
 MAX_BOT_HOLD_PCT = 0.05             # known sniper bots holding 5%+ of supply -> fail
 
+# --- holder-structure rules from commercial terminals (Axiom / GMGN / Jupiter / Trojan) and
+#     research write-ups (Mobula sniper/bundler guide, G-BOT), surveyed 2026-11-23
+MIN_HOLDERS = 75                    # Axiom "degen" filter: holders >= 75
+MAX_SNIPER_HOLD_PCT = 0.20          # supply still held by wallets that bought in blocks 1-3 (red flag > 20%)
+MAX_BUNDLE_HOLD_PCT = 0.10          # supply still held by block-0 (bundle) wallets (avoid > 10%)
+MAX_INSIDER_PCT = 0.20              # RugCheck-flagged insider wallets in the top holders
+SERIAL_MIN_PREV = 3                 # creator launched 3+ earlier coins ...
+SERIAL_DEAD_RATIO = 0.67            # ... and 67%+ of them are dead -> serial rugger
+DEAD_MCAP_USD = 5_000               # an earlier coin under $5k market cap counts as dead
+
 FAMOUS_TICKERS = {"SOL", "BONK", "WIF", "POPCAT", "TRUMP", "MELANIA", "PENGU", "JUP", "PUMP",
                   "FARTCOIN", "MOODENG", "GOAT", "PNUT", "AI16Z", "BOME", "MEW", "USDC", "USDT",
                   "ANSEM", "USELESS", "SPX", "GIGA", "MICHI", "RETARDIO", "CHILLGUY"}

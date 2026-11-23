@@ -107,6 +107,8 @@ def rug_check(mint, pair, state, radar, now=None, rpc=None, rc=None, gp=None, ho
         facts["top10_pct"] = round(top10 * 100, 1)
         if top10 >= C.MAX_TOP10_PCT:
             fails.append(f"上位10ウォレットが {top10*100:.1f}%（30%以上）")
+        top3 = sum(h["amount"] for h in wallets[:3]) / supply if supply else 1
+        facts["top3_pct"] = round(top3 * 100, 1)
         bots = radar.get("bots", set())
         bot_amt = sum(h["amount"] for h in hs if h["is_wallet"] and h["owner"] in bots)
         facts["bot_hold_pct"] = round(bot_amt / supply * 100, 2) if supply else 0
@@ -144,6 +146,21 @@ def rug_check(mint, pair, state, radar, now=None, rpc=None, rc=None, gp=None, ho
         danger = [r.get("name") for r in rc.get("risks") or [] if r.get("level") == "danger"]
         if danger:
             fails.append("RugCheck危険判定: " + "・".join(danger[:3]))
+        # holders, insiders, creator history (all from the same free RugCheck report)
+        th = rc.get("totalHolders")
+        facts["holders"] = th
+        if th is not None and th < C.MIN_HOLDERS:
+            fails.append(f"保有者 {th}人（{C.MIN_HOLDERS}人未満）")
+        ins = sum(float(h.get("pct") or 0) for h in rc.get("topHolders") or [] if h.get("insider"))
+        facts["insider_pct"] = round(ins, 2)
+        facts["insider_graph"] = rc.get("graphInsidersDetected") or 0
+        if ins / 100 >= C.MAX_INSIDER_PCT:
+            fails.append(f"インサイダー財布が {ins:.1f}% 保有（RugCheck）")
+        prev = [t for t in rc.get("creatorTokens") or [] if t.get("mint") != mint]
+        dead = sum(1 for t in prev if float(t.get("marketCap") or 0) < C.DEAD_MCAP_USD)
+        facts["creator_prev"], facts["creator_dead"] = len(prev), dead
+        if len(prev) >= C.SERIAL_MIN_PREV and dead / len(prev) >= C.SERIAL_DEAD_RATIO:
+            fails.append(f"作成者の過去コイン{len(prev)}個中{dead}個が死亡（使い捨ての常習）")
 
     # --- GoPlus (second opinion; if it answers and flags danger -> fail)
     gp = gp if gp is not None else S.goplus(mint)
@@ -171,6 +188,17 @@ def rug_check(mint, pair, state, radar, now=None, rpc=None, rc=None, gp=None, ho
         facts["block0"], facts["snipers"] = b0, sn
         if b0 > C.MAX_BLOCK0_BUNDLERS:
             fails.append(f"作成と同じ瞬間に{b0}財布がまとめ買い（レーダー）")
+        early_list = (rt or {}).get("early") if rt is not None else early
+        gaps = {e["wallet"]: e["gap"] for e in (early_list or [])}
+        if gaps and supply:
+            snip_amt = sum(h["amount"] for h in hs if h["owner"] in gaps and gaps[h["owner"]] > 0)
+            bund_amt = sum(h["amount"] for h in hs if h["owner"] in gaps and gaps[h["owner"]] == 0)
+            facts["sniper_hold_pct"] = round(snip_amt / supply * 100, 2)
+            facts["bundle_hold_pct"] = round(bund_amt / supply * 100, 2)
+            if snip_amt / supply >= C.MAX_SNIPER_HOLD_PCT:
+                fails.append(f"狙撃ボットがまだ {snip_amt/supply*100:.1f}% 保有（売り浴びせ待ち）")
+            if bund_amt / supply >= C.MAX_BUNDLE_HOLD_PCT:
+                fails.append(f"まとめ買い財布がまだ {bund_amt/supply*100:.1f}% 保有")
     except Exception as e:
         notes.append(f"初期の買い手を確認できず（{getattr(e, 'reason', type(e).__name__)}）")
 
@@ -192,6 +220,20 @@ def whale(facts, cand):
         elif prev is not None and prev - t10 > 3:
             score -= 15; why.append("大口が売り抜け中")
         cand["prev_top10"] = t10
+    t3 = facts.get("top3_pct")
+    if t3 is not None and t3 > 30:
+        score -= 20 if t3 > 50 else 10; why.append(f"上位3人に集中（{t3}%）")
+    if (facts.get("sniper_hold_pct") or 0) > 10:
+        score -= 10; why.append(f"狙撃ボット保有 {facts['sniper_hold_pct']}%")
+    h, ph = facts.get("holders"), cand.get("prev_holders")
+    if h and ph:
+        growth = h / ph - 1
+        if growth >= 0.10:
+            score += 10; why.append(f"保有者が増加中（+{growth*100:.0f}%）")
+        elif growth <= -0.05:
+            score -= 10; why.append("保有者が減少中")
+    if h:
+        cand["prev_holders"] = h
     if (facts.get("bot_hold_pct") or 0) > 1:
         score -= 20; why.append(f"ボット保有 {facts['bot_hold_pct']}%")
     if (facts.get("snipers") or 0) >= 8:
@@ -210,11 +252,14 @@ def hype(pair):
         score += 15; why.append(f"取引が活発（1時間 {b+s}件）")
     elif b + s < 60:
         score -= 20; why.append(f"取引が少ない（1時間 {b+s}件）")
-    socials = (pair.get("info") or {}).get("socials") or []
-    if socials:
-        score += 10; why.append("SNSリンクあり")
+    info = pair.get("info") or {}
+    kinds = {(x.get("type") or "").lower() for x in info.get("socials") or []}
+    if kinds & {"twitter", "x", "telegram"}:
+        score += 10; why.append("X/テレグラムあり")
+    elif info.get("websites"):
+        score -= 5; why.append("サイトのみ（実質匿名）")
     else:
-        score -= 10; why.append("SNSリンクなし")
+        score -= 15; why.append("SNSなし")
     if (pair.get("boosts") or {}).get("active"):
         score -= 5; why.append("有料ブースト中（宣伝は割り引いて評価）")
     return V(True, max(0, min(100, score)), why)

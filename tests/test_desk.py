@@ -415,3 +415,52 @@ def test_buy_and_stop_send_notifications(monkeypatch):
     d.cycle(NOW + 60)
     assert any(t.startswith("🔴 STOP") for t in sent)
     assert "残高" in d.summary_text()
+
+
+# ------------------------------------------------------------------ rules from the bot survey
+def _rc(**k):
+    base = {"creator": "DEV", "creatorBalance": 0, "markets": [{"lp": {"lpLockedPct": 100}}], "risks": [],
+            "totalHolders": 500, "topHolders": [], "creatorTokens": []}
+    base.update(k)
+    return base
+
+
+def test_few_holders_rejected():
+    r = rug(rc=_rc(totalHolders=40))
+    assert not r["ok"] and any("保有者" in x for x in r["reasons"])
+    assert rug(rc=_rc(totalHolders=500))["ok"]
+
+
+def test_insiders_rejected():
+    r = rug(rc=_rc(topHolders=[{"pct": 12, "insider": True}, {"pct": 9, "insider": True}]))
+    assert not r["ok"] and any("インサイダー" in x for x in r["reasons"])
+
+
+def test_serial_creator_rejected():
+    dead = [{"mint": f"D{i}", "marketCap": 900} for i in range(4)]
+    r = rug(rc=_rc(creatorTokens=dead))
+    assert not r["ok"] and any("常習" in x for x in r["reasons"])
+    alive = [{"mint": f"D{i}", "marketCap": 900_000} for i in range(4)]
+    assert rug(rc=_rc(creatorTokens=alive))["ok"]
+
+
+def test_snipers_and_bundles_still_holding():
+    holders = [{"owner": "POOL", "amount": 200_000_000, "is_wallet": False},
+               {"owner": "SNIPER", "amount": 60_000_000, "is_wallet": True},
+               {"owner": "BUNDLE", "amount": 120_000_000, "is_wallet": True}] + \
+              [{"owner": f"W{i}", "amount": 1_000_000, "is_wallet": True} for i in range(10)]
+    early = [{"wallet": "SNIPER", "gap": 2}, {"wallet": "BUNDLE", "gap": 0}]
+    r = rug(holders=holders, early=early)
+    assert any("まとめ買い財布がまだ" in x for x in r["reasons"]), r["reasons"]
+    assert r["facts"]["sniper_hold_pct"] == 6.0 and r["facts"]["bundle_hold_pct"] == 12.0
+
+
+def test_exit_profiles_differ_on_same_path():
+    from desk import tracker as T
+    t0 = NOW
+    # dips -10% (A stops out), then runs to 3x
+    path = [[t0, 1.0], [t0 + 300, 0.90], [t0 + 600, 1.5], [t0 + 900, 3.0], [t0 + 1200, 2.0]]
+    a = T.simulate_profile(path, T.PROFILES["A_今のルール(-6%)"])
+    b = T.simulate_profile(path, T.PROFILES["B_業界標準(-35%,2倍で半分)"])
+    assert a < 0 < b, (a, b)
+    assert a == pytest.approx(T.simulate(path)), "profile A matches the live exit rules"
