@@ -4,7 +4,13 @@
 # Paper trading only. No keys, no passwords, no money.
 set -e
 DIR="$HOME/sniper-radar"
-if [ -d "$DIR/.git" ]; then git -C "$DIR" fetch -q origin; else git clone -q https://github.com/ttiillol/sniper-radar "$DIR"; fi
+if [ -d "$DIR/.git" ]; then
+  git -C "$DIR" fetch -q origin
+  # update the program files to the latest version (local data is left alone)
+  git -C "$DIR" checkout -q origin/main -- scanner.py build_page.py desk tests deploy requirements.txt
+else
+  git clone -q https://github.com/ttiillol/sniper-radar "$DIR"
+fi
 cd "$DIR"
 /usr/bin/python3 -m venv .venv
 ./.venv/bin/pip install -q --upgrade pip
