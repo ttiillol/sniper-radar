@@ -1,1 +1,1 @@
-{"runs":2,"tokens_total":103,"last_run":1795427396,"last_stats":{"seen":118,"queued":118,"checked":60,"skipped":58,"retried":43,"reasons":{"too_busy":16,"rpc_error":40,"rate_limited":2},"rpc":"public","rpc_calls":840},"credits":{}}
+{"runs":2,"tokens_total":89,"last_run":1795430009,"last_stats":{"seen":104,"queued":104,"checked":46,"skipped":58,"retried":44,"reasons":{"too_busy":16,"rpc_error":42},"rpc":"public","rpc_calls":844},"credits":{}}
