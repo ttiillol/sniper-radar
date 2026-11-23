@@ -138,11 +138,48 @@ a{color:var(--acc);text-decoration:none}h1{font-size:20px;margin:4px 0 2px}.sub{
 .term .l{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.term .tm{color:#6e7681}.term .g{color:#3fb950}.term .r{color:#f85149}.term .b{color:#58a6ff}.term .o{color:#d29922}.term .p{color:#bc8cff}.term .d{color:#8b949e}
 .term .cur{color:#3fb950}.term .cur::after{content:"_";animation:blink 1s step-end infinite}@keyframes blink{50%{opacity:0}}
 .term .new{animation:tflash 1.6s ease-out}@keyframes tflash{0%{background:#1f6feb44}100%{background:transparent}}
+/* ---- motion layer ---- */
+.pk{position:absolute;width:10px;height:10px;border-radius:50%;transform:translate(-50%,-50%);pointer-events:none;z-index:3;transition:left .75s cubic-bezier(.5,0,.75,0),top .75s cubic-bezier(.5,0,.75,0),opacity .75s}
+.pk.out{transition-timing-function:cubic-bezier(.25,1,.5,1)}
+.ag{z-index:2}.ag.ping{animation:agping .9s ease-out}
+@keyframes agping{0%{transform:translate(-50%,-50%) scale(1)}25%{transform:translate(-50%,-50%) scale(1.09);box-shadow:0 0 0 7px var(--glow),0 8px 20px rgba(0,0,0,.12)}100%{transform:translate(-50%,-50%) scale(1)}}
+.ag .ic{transition:transform .3s}.ag.ping .ic{transform:rotate(-12deg) scale(1.15)}
+.core{z-index:2}.core .ring{position:relative}
+.core .ring::before{content:"";position:absolute;inset:-10px;border-radius:50%;border:2px dashed transparent}
+.core.busy .ring::before{border-color:#16a34a;animation:spin 3s linear infinite}
+.core .ring::after{content:"";position:absolute;inset:-18px;border-radius:50%;border:1px dotted #cfd4dc;animation:spin 14s linear infinite reverse}
+.rip{position:absolute;left:50%;top:50%;width:90px;height:90px;border-radius:50%;border:2px solid #16a34a;transform:translate(-50%,-50%) scale(.6);opacity:.7;pointer-events:none;animation:rip 1.3s ease-out forwards;z-index:1}
+@keyframes rip{to{transform:translate(-50%,-50%) scale(3.2);opacity:0}}
+.core.hit .ring{animation:hit .5s ease-out}@keyframes hit{40%{transform:scale(1.12)}}
+.wire.hot{animation:flow 2.4s linear infinite;stroke-dasharray:1.5 2}
+.logo svg{transition:transform 1s}.busy-logo svg{animation:spin 6s linear infinite}
+.tick{overflow:hidden;white-space:nowrap;background:#121722;color:#d1d5db;border-radius:10px;margin:-4px 0 14px;font:11.5px/30px ui-monospace,Menlo,monospace;position:relative}
+.tick::before,.tick::after{content:"";position:absolute;top:0;bottom:0;width:30px;z-index:1}.tick::before{left:0;background:linear-gradient(90deg,#121722,transparent)}.tick::after{right:0;background:linear-gradient(-90deg,#121722,transparent)}
+.tick .tr{display:inline-block;padding-left:12px;animation:marq 45s linear infinite}.tick .tr span{margin-right:26px}.tick .g{color:#3fb950}.tick .r{color:#f85149}.tick .o{color:#d29922}.tick .b{color:#58a6ff}
+@keyframes marq{to{transform:translateX(-50%)}}
+#toasts{position:fixed;left:50%;top:14px;transform:translateX(-50%);z-index:50;display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none;width:min(92vw,460px)}
+.toast{width:100%;border-radius:14px;padding:12px 16px;color:#fff;font:800 18px ui-monospace,Menlo,monospace;box-shadow:0 12px 30px rgba(0,0,0,.25);display:flex;justify-content:space-between;align-items:center;animation:tin .45s cubic-bezier(.2,1.4,.4,1),tout .5s ease-in 3.4s forwards}
+.toast small{font:500 11px ui-monospace,Menlo,monospace;opacity:.9;display:block}.toast.BUY{background:#16a34a}.toast.SELL{background:#2563eb}.toast.STOP{background:#e5484d;animation:tin .45s cubic-bezier(.2,1.4,.4,1),shake .5s .45s,tout .5s ease-in 3.4s forwards}
+@keyframes tin{from{transform:translateY(-30px) scale(.9);opacity:0}}@keyframes tout{to{transform:translateY(-20px);opacity:0}}
+@keyframes shake{20%,60%{transform:translateX(-8px)}40%,80%{transform:translateX(8px)}}
+.bp{position:fixed;width:8px;height:8px;border-radius:2px;z-index:49;pointer-events:none;animation:burst 1.1s cubic-bezier(.1,.8,.3,1) forwards}
+@keyframes burst{to{transform:translate(var(--dx),var(--dy)) rotate(var(--rot));opacity:0}}
+#hbal{transition:color .4s}#hbal.up{color:var(--grn);text-shadow:0 0 18px rgba(22,163,74,.35)}#hbal.dn{color:var(--red);text-shadow:0 0 18px rgba(229,72,77,.35)}
+.cc{transition:transform .3s,box-shadow .3s}.cc.bump{animation:bump .8s ease-out}@keyframes bump{30%{transform:translateY(-4px);box-shadow:0 10px 22px rgba(16,24,40,.12)}}
+.sp{position:relative;margin-top:6px}.cc .sp svg{margin-top:0}.sp .dl{position:absolute;right:-3px;width:7px;height:7px;border-radius:50%;animation:pdot 1.2s ease-in-out infinite}
+@keyframes pdot{0%,100%{transform:translateY(-50%) scale(1)}50%{transform:translateY(-50%) scale(1.9);opacity:.45}}
+.radar circle.wd{animation:wpulse 1.6s ease-in-out infinite;transform-box:fill-box;transform-origin:center}@keyframes wpulse{50%{transform:scale(1.6);opacity:.5}}
+.sweep{animation-duration:2.6s}
+.lad .tk i{animation:grow .9s cubic-bezier(.2,.9,.3,1)}.lad .tk.s i{transform-origin:right}.lad .tk.b i{transform-origin:left}@keyframes grow{from{transform:scaleX(0)}}
+.term .l.new{animation:slidein .5s cubic-bezier(.2,1,.3,1),tflash 1.8s ease-out}@keyframes slidein{from{transform:translateX(-24px);opacity:0}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style></head><body>
 <div class="nav"><a href="./">レーダー</a><a class="on" href="desk.html">デスク</a></div>
 <div class="hd"><div class="logo"><svg width="30" height="30" viewBox="0 0 30 30"><circle cx="15" cy="15" r="11" fill="none" stroke="#fff" stroke-width="2.4"/><circle cx="15" cy="15" r="4" fill="#3ddc84"/><path d="M15 1v6M15 23v6M1 15h6M23 15h6" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/></svg></div>
 <div><h1>Sniper Radar <em>Meme Desk</em></h1><div class="sub" id="hsub"></div></div>
 <div class="bal"><small>BALANCE</small><b id="hbal">-</b><span id="hstat"></span></div></div>
+<div class="tick"><div class="tr" id="tick"><span>スキャンを開始しています…</span></div></div>
+<div id="toasts"></div>
 <div id="banner"></div>
 <div class="card"><div class="ct"><span>12の担当 → 1つのデスク ・ リアルタイム</span><span class="on" id="online">● -</span></div>
 <div class="hub" id="hub"><svg class="wires" viewBox="0 0 100 100" preserveAspectRatio="none" id="wires"></svg>
@@ -289,39 +326,59 @@ $("#gaps").innerHTML=D.gaps.length?D.gaps.map(g=>`<div class="row">${ago(g.ts)} 
   const hm=t=>{const d=new Date(t*1000);return d.toTimeString().slice(0,8)};
   function spark(path,up){if(!path||path.length<2)return'<svg viewBox="0 0 100 40"></svg>';const mn=Math.min(...path),mx=Math.max(...path),
     X=i=>i/(path.length-1)*100,Y=v=>36-(v-mn)/((mx-mn)||1)*32,pts=path.map((v,i)=>X(i).toFixed(1)+","+Y(v).toFixed(1)).join(" "),c=up?"#16a34a":"#e5484d";
-    return `<svg viewBox="0 0 100 40" preserveAspectRatio="none"><polygon points="0,40 ${pts} 100,40" fill="${c}" opacity=".1"/><polyline points="${pts}" fill="none" stroke="${c}" stroke-width="1.4" vector-effect="non-scaling-stroke"/></svg>`}
+    const ly=Y(path[path.length-1]).toFixed(1);
+    return `<div class="sp"><svg viewBox="0 0 100 40" preserveAspectRatio="none"><polygon points="0,40 ${pts} 100,40" fill="${c}" opacity=".1"/><polyline points="${pts}" fill="none" stroke="${c}" stroke-width="1.4" vector-effect="non-scaling-stroke"/></svg><i class="dl" style="top:${(ly/40*100).toFixed(1)}%;background:${c};box-shadow:0 0 0 0 ${c}"></i></div>`}
   function paint(){
     if(!last){$("#corecap").innerHTML=`DESK <span>· ${fails>2?"ライブ情報なし":"接続中"}</span>`;return}
     const L=last,n=L.now||{},age=Date.now()/1000-L.ts,busy=n.icon!=="idle"&&n.icon!=="start";
-    $("#core").className="core"+(busy&&age<30?" busy":"");
+    $("#core").classList.toggle("busy",busy&&age<30);document.querySelector(".logo").classList.toggle("busy-logo",busy&&age<30);
     $("#corecap").innerHTML=age>90?`DESK <span>· ${sec(L.ts)}から停止?</span>`:busy?`DESK <span>· ${n.sym?esc(n.sym)+" ":""}${n.agent?"作業中":"巡回中"}</span>`:`DESK <span>· 待機中</span>`;
     const A=L.agents||{},now=Date.now()/1000;let on=0;
     AG.forEach(([id,,c])=>{const a=A[id],el=$("#ag-"+id),w=$("#w-"+id);const act=a&&n.agent===id&&now-a.t<8,hot=a&&now-a.t<120;
       if(a&&now-a.t<7200)on++;
-      el.className="ag"+(act?" act":"")+(a?"":" idle");el.style.borderColor=act?c:hot?c+"66":"var(--line)";
+      el.classList.toggle("act",!!act);el.classList.toggle("idle",!a);el.style.borderColor=act?c:hot?c+"66":"var(--line)";
       el.querySelector(".tx").textContent=a?a.x+" ・ "+sec(a.t):"待機中";
       w.setAttribute("class","wire"+(act?" act":hot?" hot":""));w.style.stroke=act||hot?c:"";});
     $("#online").textContent="● "+on+"/12 稼働（2時間以内）";
     document.querySelectorAll("#term .tm").forEach(e=>{});
   }
+  const POS=Object.fromEntries(AG.map(([id,,c,x,y])=>[id,{c,x,y}]));const lastT={};let lastBal=null,lastFlow=0,lastChart={};
+  function packet(id,out){const P=POS[id];if(!P)return;const d=document.createElement("div");d.className="pk"+(out?" out":"");
+    d.style.background=P.c;d.style.boxShadow=`0 0 10px 3px ${P.c}88`;const a=out?{x:50,y:50}:P,b=out?P:{x:50,y:50};
+    d.style.left=a.x+"%";d.style.top=a.y+"%";hub.appendChild(d);d.offsetWidth;d.style.left=b.x+"%";d.style.top=b.y+"%";d.style.opacity=".25";
+    setTimeout(()=>{d.remove();if(!out){const c=$("#core");c.classList.remove("hit");c.offsetWidth;c.classList.add("hit");const r=document.createElement("div");r.className="rip";r.style.borderColor=P.c;hub.appendChild(r);setTimeout(()=>r.remove(),1300)}},760)}
+  function ping(id){const el=$("#ag-"+id);if(!el)return;el.classList.remove("ping");el.offsetWidth;el.classList.add("ping");setTimeout(()=>el.classList.remove("ping"),900)}
+  function burst(color){for(let i=0;i<26;i++){const b=document.createElement("div");b.className="bp";const ang=Math.random()*Math.PI*2,dist=90+Math.random()*170;
+    b.style.left="50%";b.style.top="70px";b.style.background=i%3?color:"#fbbf24";b.style.setProperty("--dx",Math.cos(ang)*dist+"px");b.style.setProperty("--dy",Math.sin(ang)*dist*.7+80+"px");
+    b.style.setProperty("--rot",(Math.random()*720-360)+"deg");document.body.appendChild(b);setTimeout(()=>b.remove(),1150)}}
+  function toast(f){const t=document.createElement("div");t.className="toast "+f.r;const word={BUY:"練習買い",SELL:"利確・売り",STOP:"損切り"}[f.r];
+    t.innerHTML=`<span>${f.r} ${esc(f.s||"")}<small>${esc(word)} ・ ${esc(f.x).slice(0,60)}</small></span>`;$("#toasts").appendChild(t);setTimeout(()=>t.remove(),4000);
+    burst(f.r==="BUY"?"#16a34a":f.r==="SELL"?"#2563eb":"#e5484d")}
+  function countTo(el,from,to){const t0=performance.now();const step=now=>{const k=Math.min(1,(now-t0)/900),v=from+(to-from)*(1-Math.pow(1-k,3));el.textContent="$"+v.toFixed(2);if(k<1)requestAnimationFrame(step)};requestAnimationFrame(step)}
   function render(L){
     const st=L.status||{},H=st.head;
-    if(H){const r=H.balance/H.start;$("#hbal").textContent="$"+H.balance.toFixed(2);
+    const A=L.agents||{};AG.forEach(([id])=>{const a=A[id];if(!a)return;if(lastT[id]!==undefined&&a.t>lastT[id]){packet(id);ping(id)}lastT[id]=a.t});
+    const tk=[];(st.charts||[]).forEach(c=>tk.push(`<span><b>$${esc(c.s)}</b> <span class="${c.chg>=0?"g":"r"}">${c.chg>=0?"▲":"▼"}${(Math.abs(c.chg)*100).toFixed(1)}%</span> ${esc(c.st)}</span>`));
+    AG.forEach(([id,nm])=>{const a=A[id];if(a)tk.push(`<span><span class="b">${esc(nm)}</span> ${esc(a.x)}</span>`)});
+    if(tk.length&&!$("#tick").dataset.busy){const h=tk.join("");$("#tick").innerHTML=h+h;$("#tick").dataset.busy=1;setTimeout(()=>delete $("#tick").dataset.busy,45000)}
+    if(H){const r=H.balance/H.start,el=$("#hbal");if(lastBal===null)el.textContent="$"+H.balance.toFixed(2);else if(Math.abs(H.balance-lastBal)>=0.01){countTo(el,lastBal,H.balance);el.className=H.balance>lastBal?"up":"dn";setTimeout(()=>el.className="",2200)}lastBal=H.balance;
       $("#hstat").innerHTML=`${r.toFixed(2)}× from $${H.start} ・ ${H.n} trades ・ <span class="pos">${H.w}W</span>/<span class="neg">${H.l}L</span>`}
     $("#hsub").innerHTML=`<span class="pos">●</span> 稼働中 ・ 勢いスキャル ・ 練習（本物のお金は動かない・コスト3%差し引き済み） ・ 保有 ${H?H.open+"/"+H.max:"-"} ・ 審査待ち ${st.waiting??"-"}`;
     const CH=st.charts||[];$("#chst").textContent=CH.length?CH.length+"件":"審査待ち";
-    $("#charts").innerHTML=CH.length?CH.map(c=>`<div class="cc${c.st==="保有中"?" hold":""}"><div class="h"><a href="https://dexscreener.com/solana/${encodeURIComponent(c.m)}" target="_blank" rel="noopener">$${esc(c.s||"?")}</a><span class="${c.chg>=0?"pos":"neg"}">${c.chg>=0?"+":""}${(c.chg*100).toFixed(1)}%</span></div>
+    const bumped=new Set(CH.filter(c=>lastChart[c.m]!==undefined&&lastChart[c.m]!==c.chg).map(c=>c.m));CH.forEach(c=>lastChart[c.m]=c.chg);
+    $("#charts").innerHTML=CH.length?CH.map(c=>`<div class="cc${c.st==="保有中"?" hold":""}${bumped.has(c.m)?" bump":""}"><div class="h"><a href="https://dexscreener.com/solana/${encodeURIComponent(c.m)}" target="_blank" rel="noopener">$${esc(c.s||"?")}</a><span class="${c.chg>=0?"pos":"neg"}">${c.chg>=0?"+":""}${(c.chg*100).toFixed(1)}%</span></div>
       <div class="px">${c.p?(+c.p).toPrecision(4):"-"}</div><div class="mc">流動性 $${c.liq?Math.round(c.liq/1000)+"K":"-"}</div>${spark(c.path,c.chg>=0)}<div class="ft"><span>${c.path.length}点</span><span>${esc(c.st)}</span></div></div>`).join("")
       :'<div class="small">まだ追跡中のコインがありません（審査すると、ここに値動きが出ます）</div>';
     const F=st.flow;
-    if(F&&F.ladder){const mx=Math.max(1,...F.ladder.map(r=>Math.max(r.buy,r.sell)));$("#ladsym").textContent="$"+F.symbol+" ・ "+sec(F.t);
+    if(F&&F.ladder&&F.t===lastFlow){}
+    else if(F&&F.ladder){lastFlow=F.t;const mx=Math.max(1,...F.ladder.map(r=>Math.max(r.buy,r.sell)));$("#ladsym").textContent="$"+F.symbol+" ・ "+sec(F.t);
       $("#lad").innerHTML=F.ladder.map(r=>`<div class="lr"><span class="n">${r.ns}件</span><div class="tk s"><i style="width:${(r.sell/mx*100).toFixed(1)}%"></i></div><span>${esc(r.b)}</span></div>`).join("")+
         `<div class="mid"><span class="${F.net>=0?"pos":"neg"}">${F.net>=0?"+":"-"}$${Math.abs(F.net).toLocaleString()}</span><span>直近10分の差し引き</span></div>`+
         F.ladder.slice().reverse().map(r=>`<div class="lr"><span class="n">${r.nb}件</span><div class="tk b"><i style="width:${(r.buy/mx*100).toFixed(1)}%"></i></div><span>${esc(r.b)}</span></div>`).join("")+
         `<div class="small" style="margin-top:6px">上の赤＝売り、下の緑＝買い（金額帯ごとの合計）</div>`;
       const W=F.whales||[];$("#radsym").textContent="$"+F.symbol;
       const dots=W.map((w,i)=>{const ang=(w.ago/600)*2*Math.PI-Math.PI/2,lr=Math.log10(Math.max(w.usd,500)),rad=12+34*Math.min(1,(lr-2.7)/2);
-        return `<circle cx="${(50+rad*Math.cos(ang)).toFixed(1)}" cy="${(50+rad*Math.sin(ang)).toFixed(1)}" r="${(1.6+Math.min(2.4,(lr-2.7)*1.4)).toFixed(1)}" fill="${w.k==="buy"?"#16a34a":"#e5484d"}" opacity=".85"/>`}).join("");
+        return `<circle class="wd" style="animation-delay:${(i*0.17%1.6).toFixed(2)}s" cx="${(50+rad*Math.cos(ang)).toFixed(1)}" cy="${(50+rad*Math.sin(ang)).toFixed(1)}" r="${(1.6+Math.min(2.4,(lr-2.7)*1.4)).toFixed(1)}" fill="${w.k==="buy"?"#16a34a":"#e5484d"}" opacity=".85"/>`}).join("");
       $("#radar").innerHTML=`<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="46" fill="none" stroke="#e3e6eb"/><circle cx="50" cy="50" r="31" fill="none" stroke="#e3e6eb"/><circle cx="50" cy="50" r="16" fill="none" stroke="#e3e6eb"/>
         <line x1="4" y1="50" x2="96" y2="50" stroke="#eef0f3"/><line x1="50" y1="4" x2="50" y2="96" stroke="#eef0f3"/>
         <g class="sweep"><path d="M50 50 L96 50 A46 46 0 0 0 82.5 17.5 Z" fill="#16a34a" opacity=".12"/><line x1="50" y1="50" x2="96" y2="50" stroke="#16a34a" stroke-width=".8"/></g>
@@ -333,6 +390,7 @@ $("#gaps").innerHTML=D.gaps.length?D.gaps.map(g=>`<div class="row">${ago(g.ts)} 
     const FE=(L.feed||[]).slice(0,40);$("#lcount").textContent=(L.steps||0).toLocaleString()+" steps";
     const n=L.now||{};
     $("#term").innerHTML=`<div class="l cur">&gt; ${n.sym?esc(n.sym)+" ":""}${esc(n.text||"")}</div>`+FE.map(f=>{const k=f.t+f.x,isNew=!first&&!seen.has(k);seen.add(k);
+      if(isNew&&(f.r==="BUY"||f.r==="SELL"||f.r==="STOP")){toast(f);if(f.r==="BUY")setTimeout(()=>packet("exec",true),200)}
       return `<div class="l${isNew?" new":""}"><span class="tm">${hm(f.t)}</span> <span class="${cls[f.r]||"b"}">${lab[f.r]||"... "}</span> ${f.s?`<span class="b">${esc(f.s)}</span> `:""}${esc(f.x)}</div>`}).join("");
     first=false;
   }
@@ -341,7 +399,7 @@ $("#gaps").innerHTML=D.gaps.length?D.gaps.map(g=>`<div class="row">${ago(g.ts)} 
       fails=0;if(!last||L.ts!==last.ts){last=L;render(L)}}catch(e){fails++}
     paint();
   }
-  poll();setInterval(poll,2000);setInterval(paint,1000);
+  poll();setInterval(poll,1000);setInterval(paint,1000);
 })();
 </script></body></html>
 """
