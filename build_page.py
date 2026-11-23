@@ -31,6 +31,8 @@ def main():
         "all": {w: [v["count"], v["block0"]] for w, v in wallets.items()},
         "tokens": tokens[:60],
     }
+    groups = scanner.wallet_groups(tokens)
+    payload["groups"] = [[g["wallets"], g["together"]] for g in groups[:30]]
     SITE.mkdir(exist_ok=True)
     html = TEMPLATE.replace("__DATA__", json.dumps(payload, separators=(",", ":"),
                                                    ensure_ascii=False).replace("</", "<\\/"))
@@ -45,6 +47,7 @@ def main():
         "updated": int(time.time()),
         "tokens_checked": meta.get("tokens_total", 0),
         "bots": [w for w, v in wallets.items() if v["count"] >= 5],
+        "groups": [g["wallets"] for g in groups],     # wallets that always buy together (one operator)
         "suspects": [w for w, v in wallets.items() if 3 <= v["count"] < 5],
         "tokens": {t["mint"]: {"block0": t["block0"], "snipers": t["snipers"],
                                "early": [e["wallet"] for e in t.get("early", [])]}
@@ -105,9 +108,12 @@ button{margin-top:8px;width:100%;padding:12px;border:0;border-radius:10px;backgr
 <button id="bulk" style="margin:0 0 10px">🚫 ボット濃厚の財布をまとめてコピー</button>
 <div id="list"></div></div>
 
+<div class="card"><h2>👥 いつも一緒に買う財布グループ</h2><div id="grp"></div></div>
+
 <div class="card help"><h2>見方</h2>
 <b>同ブロック買い</b>：コインが作られたのと同じ瞬間に買った財布。作った本人の仲間（まとめ買い）の可能性が高い。<br>
 <b>狙撃</b>：作られてから約1秒以内（3ブロック以内）に買った財布。<br>
+<b>財布グループ</b>：同じ人が複数の財布でまとめ買いしている可能性が高い。どれか1つでも保有者にいたら要注意。<br>
 <b>ボット濃厚</b>：いくつものコインで早撃ちしている財布。真似しても同じ値段では買えないので<b>コピー対象から外す</b>。<br>
 ※記録に無い＝「観測した範囲では早撃ちしていない」という意味で、安全の保証ではありません。</div>
 
@@ -168,6 +174,8 @@ $("#list").addEventListener("click",e=>{const b=e.target.closest(".copy");if(!b)
 $("#bulk").onclick=()=>{const list=D.ranked.filter(r=>r[1]>=5).map(r=>r[0]);const b=$("#bulk");
   if(!list.length){b.textContent="まだボット濃厚の財布はありません";return}
   navigator.clipboard?.writeText(list.join("\n")).then(()=>{b.textContent=`✓ ${list.length}個コピーしました`}).catch(()=>{b.textContent="コピーできませんでした"})};
+$("#grp").innerHTML=(D.groups||[]).length?D.groups.map(([ws,n],i)=>`<div class="row"><div class="grow"><b>グループ${i+1}</b> <span class="tag t-red">${ws.length}財布</span> <span class="small">${n}コインで同時に早撃ち</span>
+  <div class="small">${ws.slice(0,6).map(a=>link(a)).join(" ")}${ws.length>6?" …":""}</div></div></div>`).join(""):'<div class="small">まだ見つかっていません（3コイン以上で一緒に早撃ちした財布をまとめます）</div>';
 draw();
 </script></body></html>
 """

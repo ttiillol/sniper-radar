@@ -159,8 +159,10 @@ def test_rug_liquidity_age_and_missing_pair():
 def test_rug_impersonation():
     assert not rug(p=pair(sym="BONK"))["ok"]
     s = P.new_state()
-    s["seen_symbols"]["GOOD"] = "OTHERMINT"
-    assert not rug(state=s)["ok"]
+    s["seen_symbols"]["GOOD"] = {"mint": "OTHERMINT", "t": NOW - 86400}
+    assert not rug(state=s)["ok"], "copy of a coin that graduated yesterday"
+    s["seen_symbols"]["GOOD"] = {"mint": "OTHERMINT", "t": NOW - 30 * 86400}
+    assert rug(state=s)["ok"], "same name a month ago is not a copy"
 
 
 def test_rug_radar_bot_holdings():
@@ -283,3 +285,38 @@ def test_evaluations_capped_per_cycle(monkeypatch):
     monkeypatch.setattr(M, "load_radar", lambda: {"bots": set(), "tokens": {}})
     d.cycle(NOW)
     assert len(n) == C.MAX_EVALS_PER_CYCLE
+
+
+def test_db_writes_from_many_threads():
+    import threading
+    errs = []
+    def w(i):
+        try:
+            P.log_decision("t", f"m{i}", "S", "REJECT", "x")
+        except Exception as e:
+            errs.append(e)
+    ts = [threading.Thread(target=w, args=(i,)) for i in range(20)]
+    [t.start() for t in ts]; [t.join() for t in ts]
+    assert not errs
+
+
+def test_new_tx_version_is_adopted(monkeypatch):
+    import scanner
+    monkeypatch.setitem(scanner.TX_VERSION, "max", 0)
+    calls = []
+    def fake(method, params):
+        v = params[1]["maxSupportedTransactionVersion"]
+        calls.append(v)
+        if v < 1:
+            raise scanner.RpcError("tx_version", "Transaction version (1) is not supported by the requesting client")
+        return {"transaction": {"message": {"accountKeys": ["SIGNER"]}}, "meta": {}}
+    signer, _ = scanner.tx_signer_and_delta("sig", "MINT", fake)
+    assert signer == "SIGNER" and calls == [0, 1] and scanner.TX_VERSION["max"] == 1
+
+
+def test_wallet_groups_found():
+    import scanner
+    toks = [{"early": [{"wallet": "A"}, {"wallet": "B"}, {"wallet": "C"}, {"wallet": f"X{i}"}]} for i in range(3)]
+    toks += [{"early": [{"wallet": "A"}, {"wallet": "Z"}]}]
+    g = scanner.wallet_groups(toks)
+    assert g and set(g[0]["wallets"]) == {"A", "B", "C"} and g[0]["together"] == 3

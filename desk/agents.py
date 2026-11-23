@@ -84,8 +84,8 @@ def rug_check(mint, pair, state, radar, now=None, rpc=None, rc=None, gp=None, ho
     if sym in C.FAMOUS_TICKERS:
         fails.append(f"有名銘柄 {sym} の名前を使用（偽物の疑い）")
     prev = state["seen_symbols"].get(sym)
-    if prev and prev != mint:
-        fails.append(f"同じ名前 {sym} の別コインが先に卒業済み（コピー銘柄の疑い）")
+    if isinstance(prev, dict) and prev.get("mint") != mint and now - (prev.get("t") or 0) < 7 * 86400:
+        fails.append(f"同じ名前 {sym} の別コインが7日以内に卒業済み（コピー銘柄の疑い）")
 
     # --- on-chain: authorities, holders
     try:

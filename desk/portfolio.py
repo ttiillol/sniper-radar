@@ -52,19 +52,23 @@ def save_state(s):
 
 
 # ---------------------------------------------------------------- logging
-_db = None
+_db = None          # kept for test compatibility; connections are now per call (thread-safe)
+_DB_LOCK = __import__("threading").Lock()
 
 
-def _conn():
-    global _db
-    if _db is None:
-        C.DESK.mkdir(parents=True, exist_ok=True)
-        _db = sqlite3.connect(C.DB_FILE)
-        _db.execute("create table if not exists decisions(ts integer, kind text, mint text, "
-                    "symbol text, action text, reason text, data text)")
-        _db.execute("create table if not exists trades(ts integer, mint text, symbol text, side text, "
-                    "usd real, price real, slip real, pnl real, reason text)")
-    return _db
+def _exec(sql, params):
+    C.DESK.mkdir(parents=True, exist_ok=True)
+    with _DB_LOCK:
+        con = sqlite3.connect(C.DB_FILE, timeout=10)
+        try:
+            con.execute("create table if not exists decisions(ts integer, kind text, mint text, "
+                        "symbol text, action text, reason text, data text)")
+            con.execute("create table if not exists trades(ts integer, mint text, symbol text, side text, "
+                        "usd real, price real, slip real, pnl real, reason text)")
+            con.execute(sql, params)
+            con.commit()
+        finally:
+            con.close()
 
 
 def log_decision(kind, mint, symbol, action, reason, **data):
@@ -73,16 +77,14 @@ def log_decision(kind, mint, symbol, action, reason, **data):
     C.DESK.mkdir(parents=True, exist_ok=True)
     with open(C.DECISIONS_LOG, "a") as f:
         f.write(json.dumps(row, ensure_ascii=False, separators=(",", ":")) + "\n")
-    _conn().execute("insert into decisions values(?,?,?,?,?,?,?)",
-                    (row["ts"], kind, mint, symbol, action, reason, json.dumps(data, ensure_ascii=False)))
-    _conn().commit()
+    _exec("insert into decisions values(?,?,?,?,?,?,?)",
+          (row["ts"], kind, mint, symbol, action, reason, json.dumps(data, ensure_ascii=False)))
     return row
 
 
 def log_trade(mint, symbol, side, usd, price, slip, pnl, reason):
-    _conn().execute("insert into trades values(?,?,?,?,?,?,?,?,?)",
-                    (int(time.time()), mint, symbol, side, usd, price, slip, pnl, reason))
-    _conn().commit()
+    _exec("insert into trades values(?,?,?,?,?,?,?,?,?)",
+          (int(time.time()), mint, symbol, side, usd, price, slip, pnl, reason))
 
 
 def trim_log(max_lines=8000):

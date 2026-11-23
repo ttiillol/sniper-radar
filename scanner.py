@@ -17,6 +17,7 @@ import asyncio
 import json
 import os
 import random
+import re
 import threading
 import time
 from pathlib import Path
@@ -53,7 +54,8 @@ class RpcError(Exception):
 _lock = threading.Lock()
 _last_call = [0.0]
 CALLS = {"n": 0}
-ERR_SAMPLES = {}          # reason -> short sample message (shown on the page for diagnosis)
+ERR_SAMPLES = {}
+TX_VERSION = {"max": 0}   # raised automatically if the network starts using newer tx versions          # reason -> short sample message (shown on the page for diagnosis)
 
 
 def _pace():
@@ -93,7 +95,9 @@ def rpc(method, params, retries=3):
                     if "error" not in j:
                         return j["result"]
                     code = (j["error"] or {}).get("code")
-                    msg = str((j["error"] or {}).get("message", ""))[:80]
+                    msg = str((j["error"] or {}).get("message", ""))[:160]
+                    if code == -32015:
+                        raise RpcError("tx_version", msg)       # caller retries with a newer version
                     if code in (429, -32429) or "rate" in msg.lower():
                         last = "rate_limited"
                     elif "credit" in msg.lower() or "limit" in msg.lower():
@@ -144,9 +148,24 @@ def earliest_signatures(mint, rpc_call=rpc, max_pages=3):
     raise RpcError("too_busy")
 
 
+def get_tx(sig, rpc_call=rpc):
+    for _ in range(3):
+        try:
+            return rpc_call("getTransaction", [sig, {"encoding": "json", "commitment": "confirmed",
+                                                     "maxSupportedTransactionVersion": TX_VERSION["max"]}])
+        except RpcError as e:
+            if e.reason != "tx_version":
+                raise
+            m = re.search(r"version \((\d+)\)", str(e))
+            need = int(m.group(1)) if m else TX_VERSION["max"] + 1
+            if need <= TX_VERSION["max"]:
+                raise
+            TX_VERSION["max"] = need
+    raise RpcError("tx_version")
+
+
 def tx_signer_and_delta(sig, mint, rpc_call=rpc):
-    tx = rpc_call("getTransaction", [sig, {"encoding": "json", "commitment": "confirmed",
-                                           "maxSupportedTransactionVersion": 0}])
+    tx = get_tx(sig, rpc_call)
     if not tx:
         return None, 0.0
     keys = tx["transaction"]["message"]["accountKeys"]
@@ -262,6 +281,36 @@ def rebuild(data_dir=None):
     meta = {"runs": sum(m.get("runs", 1) for m in metas), "tokens_total": len(uniq), "credits": credits,
             "last_run": newest.get("end"), "last_stats": newest.get("stats", {})}
     return wallets, tokens, meta
+
+
+def wallet_groups(tokens_or_recs, min_together=3):
+    """Wallets that bought early TOGETHER on min_together+ coins -> likely one operator."""
+    from collections import Counter
+    from itertools import combinations
+    pairs = Counter()
+    for t in tokens_or_recs:
+        ws = sorted({e["wallet"] for e in (t.get("early") or [])})
+        if 2 <= len(ws) <= 25:
+            pairs.update(combinations(ws, 2))
+    parent = {}
+    def find(x):
+        parent.setdefault(x, x)
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+    for (a, b), n in pairs.items():
+        if n >= min_together:
+            parent[find(a)] = find(b)
+    groups = {}
+    for x in list(parent):
+        groups.setdefault(find(x), []).append(x)
+    out = []
+    for members in groups.values():
+        if len(members) >= 2:
+            together = max(n for (a, b), n in pairs.items() if a in members and b in members)
+            out.append({"wallets": sorted(members), "together": together})
+    return sorted(out, key=lambda g: (-len(g["wallets"]), -g["together"]))
 
 
 def radar_credits(month, data_dir=None):

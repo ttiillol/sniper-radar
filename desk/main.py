@@ -31,8 +31,9 @@ def load_radar():
             wallets, tokens, _ = scanner.rebuild(C.DATA)
         except Exception:
             wallets, tokens = {}, []
+        grouped = {w for g in scanner.wallet_groups(tokens) for w in g["wallets"]}
         _radar_cache.update(t=time.time(), v={
-            "bots": {w for w, v in wallets.items() if v.get("count", 0) >= 5},
+            "bots": {w for w, v in wallets.items() if v.get("count", 0) >= 5} | grouped,
             "tokens": {t["mint"]: t for t in tokens}})
     v = _radar_cache["v"]
     return {"bots": set(v["bots"]), "tokens": dict(v["tokens"])}
@@ -157,8 +158,9 @@ class Desk:
         if "block0" in f:
             cand["radar"] = {"block0": f["block0"], "snipers": f.get("snipers", 0)}
         u = (sym or "").upper().lstrip("$")
-        if u and u not in self.s["seen_symbols"]:
-            self.s["seen_symbols"][u] = mint
+        cur = self.s["seen_symbols"].get(u)
+        if u and not (isinstance(cur, dict) and now - cur.get("t", 0) < 7 * 86400):
+            self.s["seen_symbols"][u] = {"mint": mint, "t": int(cand.get("grad") or now)}
         if not rg["ok"]:
             return reject("Rug", rg["reasons"], facts=rg.get("facts"), notes=rg.get("notes"))
         sn, wh, hy = A.sniper(pair), A.whale(rg["facts"], cand), A.hype(pair)
