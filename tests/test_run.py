@@ -26,20 +26,26 @@ class FakeWS:
     async def __aexit__(self, *a): return False
     async def send(self, m): pass
     async def recv(self):
-        await asyncio.sleep(0.02)
+        await asyncio.sleep(float(__import__("os").environ.get("FAKE_WS_DELAY", "0.02")))
         self.n += 1
         return json.dumps({"txType": "create", "mint": f"MINT{self.n}pump", "symbol": f"C{self.n}",
                            "traderPublicKey": "CREATOR"})
 
 
+calls = {"n": 0}
+
+
 def fake_analyze(mint, creator):
+    """Deterministic failures (independent of machine speed / which coins got sampled)."""
     attempts[mint] = attempts.get(mint, 0) + 1
-    k = int(mint[4:-4])
-    if k % 5 == 0 and attempts[mint] == 1:
-        raise scanner.RpcError("rate_limited")          # transient: should succeed on retry
-    if k % 7 == 0:
-        raise scanner.RpcError("too_busy")              # permanent: no retry
-    return {"create_slot": 1, "early": [{"wallet": BOT, "gap": 1}, {"wallet": f"H{k}", "gap": 2}]}
+    if attempts[mint] == 1:
+        calls["n"] += 1
+        k = calls["n"]
+        if k % 4 == 0:
+            raise scanner.RpcError("rate_limited")      # transient: should succeed on retry
+        if k % 5 == 0:
+            raise scanner.RpcError("too_busy")          # permanent: no retry
+    return {"create_slot": 1, "early": [{"wallet": BOT, "gap": 1}, {"wallet": mint + "H", "gap": 2}]}
 
 
 scanner.websockets.connect = lambda *a, **k: FakeWS()
