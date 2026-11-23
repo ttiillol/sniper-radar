@@ -5,6 +5,7 @@ from pathlib import Path
 
 from . import config as C
 from . import portfolio as P
+from . import tracker as T
 
 
 def build(site: Path):
@@ -23,6 +24,8 @@ def build(site: Path):
         "credits": s["credits"].get(mk, 0), "decisions": slim, "rpc": s.get("rpc"),
         "samples": s.get("rpc_samples") or {}, "watch": sum(
             1 for c in s["candidates"].values() if c.get("status") == "waiting"),
+        "verify": T.summarize(s.get("outcomes", [])), "tracking": len(s.get("tracking", {})),
+        "outcomes_n": len(s.get("outcomes", [])),
         "limits": {"daily": C.DAILY_LOSS_LIMIT, "total": C.TOTAL_LOSS_LIMIT, "max": C.MAX_OPEN_POSITIONS,
                    "start": C.START_CASH},
     }
@@ -68,6 +71,7 @@ a{color:var(--acc);text-decoration:none}h1{font-size:20px;margin:4px 0 2px}.sub{
 <div class="small" style="margin-top:8px">累計の損失枠 <span id="tl"></span></div><div class="bar"><i id="tlb"></i></div>
 </div>
 <div class="card"><h2>📡 ライブフィード <span class="small">（1分ごとに自動更新）</span></h2><div id="feed"></div></div>
+<div class="card" id="vc"></div>
 <div class="card" id="hc"></div>
 <div class="card"><h2>保有中</h2><div id="poss"></div></div>
 <div class="card"><h2>判断の記録</h2>
@@ -99,6 +103,17 @@ $("#banner").innerHTML=D.halted?`<div class="banner b-red">⛔ 完全停止中�
 const P=Object.entries(D.positions);
 $("#poss").innerHTML=P.length?P.map(([m,p])=>`<div class="row"><b>${(p.symbol||"?").replace(/</g,"")}</b> ${usd(p.cost)} ・ ${ago(p.opened)}に購入${p.half_sold?" ・ 半分利確済":""}
  <div class="small">買値 ${p.entry.toPrecision(4)} ・ 最高値 ${(p.peak/p.entry*100-100).toFixed(1)}% ・ <a href="https://dexscreener.com/solana/${m}" target="_blank" rel="noopener">チャート</a></div></div>`).join(""):'<div class="small">保有なし</div>';
+(function(){
+  const V=D.verify||{}, pct=x=>(x*100).toFixed(1)+"%";
+  const tbl=(title,g,order)=>{const rows=Object.entries(g||{}).filter(([k,v])=>v).sort((a,b)=>order?order.indexOf(a[0])-order.indexOf(b[0]):b[1].n-a[1].n);
+    if(!rows.length)return"";return `<div style="margin-top:10px"><b style="font-size:13px">${title}</b>`+rows.map(([k,v])=>`<div class="row" style="display:flex;gap:8px;align-items:center"><span style="flex:1">${k.replace(/</g,"")}</span>
+    <span class="small">${v.n}件</span><span class="small" style="width:70px;text-align:right">勝率 ${pct(v.win)}</span><b class="${v.avg>0?"pos":"neg"}" style="width:62px;text-align:right">${v.avg>0?"+":""}${pct(v.avg)}</b></div>`).join("")+"</div>"};
+  const NMD={BUY:"買った",REJECT:"見送った",WATCH:"様子見した"};
+  const dec=Object.fromEntries(Object.entries(V.decision||{}).map(([k,v])=>[NMD[k]||k,v]));
+  $("#vc").innerHTML=`<h2>🔬 検証：もし買っていたら <span class="small">（4時間追跡・同じ売りルールで計算）</span></h2>
+  <div class="small">追跡中 ${D.tracking}件 ・ 結果が出た ${D.outcomes_n}件。見送ったコインの成績が良ければ、そのルールは厳しすぎる証拠です。</div>
+  ${D.outcomes_n?tbl("判断別",dec)+tbl("見送り理由別",V.reason)+tbl("流動性別",V.liq,["$30k以上","$10k〜30k","$5k〜10k","$5k未満","不明"])+tbl("点数別",V.score,["60以上","40〜59","40未満"]):'<div class="small" style="margin-top:8px">まだ結果がありません（審査から4時間後に出始めます）</div>'}`;
+})();
 (function(){
   const lab=d=>d.action==="BUY"?"BUY":d.action==="SELL"?((d.reason||"").startsWith("損切り")?"STOP":"SELL"):d.action==="REJECT"?"SKIP":null;
   const F=D.decisions.map(d=>[lab(d),d]).filter(x=>x[0]).slice(0,40);

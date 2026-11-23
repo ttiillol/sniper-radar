@@ -79,7 +79,7 @@ def rug_check(mint, pair, state, radar, now=None, rpc=None, rc=None, gp=None, ho
     liq = (pair.get("liquidity") or {}).get("usd") or 0
     facts["liq"] = liq
     if liq < C.MIN_LIQ_USD:
-        fails.append(f"流動性 ${liq:,.0f}（$30,000未満）")
+        fails.append(f"流動性 ${liq:,.0f}（${C.MIN_LIQ_USD:,.0f}未満）")
 
     # --- impersonation
     sym = ((pair.get("baseToken") or {}).get("symbol") or "").upper().lstrip("$")

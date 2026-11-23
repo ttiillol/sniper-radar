@@ -18,6 +18,7 @@ from . import agents as A
 from . import config as C
 from . import portfolio as P
 from . import sources as S
+from . import tracker as T
 import scanner
 
 
@@ -144,8 +145,12 @@ class Desk:
         sym = ((pair or {}).get("baseToken") or {}).get("symbol", cand.get("symbol", ""))
         cand["symbol"] = sym
 
-        def reject(stage, reasons, **extra):
+        liq0 = ((pair or {}).get("liquidity") or {}).get("usd")
+        price0 = S.pair_price(pair) if pair else None
+
+        def reject(stage, reasons, score=None, **extra):
             cand["status"] = "rejected"
+            T.start(self.s, mint, sym, price0, liq0, "REJECT", reasons, score, now)
             key = re.sub(r"\$?\d[\d,\.]*", "N", reasons[0].split("（")[0]).replace("上位N", "上位10")[:32]
             self.s["stats"]["rejected"][key] = self.s["stats"]["rejected"].get(key, 0) + 1
             P.log_decision("entry", mint, sym, "REJECT", f"[{stage}] " + " / ".join(reasons), **extra)
@@ -169,16 +174,19 @@ class Desk:
         if not sn["ok"] or score < C.MIN_ENTRY_SCORE:
             if cand["checks"] < 4 and sn["ok"] and score >= 40:
                 cand["next_check"] = now + 300      # look again in 5 minutes
+                T.start(self.s, mint, sym, price0, liq0, "WATCH", [], score, now)
                 P.log_decision("entry", mint, sym, "WATCH", f"点数{score}（{C.MIN_ENTRY_SCORE}未満）— 5分後にまた確認", **why)
                 return "watch"
-            return reject("Sniper", sn["reasons"] if not sn["ok"] else [f"点数{score}（{C.MIN_ENTRY_SCORE}未満）"], **why)
+            return reject("Sniper", sn["reasons"] if not sn["ok"] else [f"点数{score}（{C.MIN_ENTRY_SCORE}未満）"],
+                          score=score, **why)
         rk = A.risk(self.s, pair, now)
         if not rk["ok"]:
-            return reject("Risk", rk["reasons"], **why)
+            return reject("Risk", rk["reasons"], score=score, **why)
         price = S.pair_price(pair)
         fill, slip = P.paper_buy(self.s, mint, sym, rk["size"], price, rg["facts"]["liq"],
                                  f"点数{score}", now)
         cand["status"] = "bought"
+        T.start(self.s, mint, sym, price, rg["facts"]["liq"], "BUY", [], score, now)
         P.log_decision("entry", mint, sym, "BUY", f"点数{score}・{rk['reasons'][0]}", price=fill,
                        facts=rg["facts"], **why)
         return "bought"
@@ -189,6 +197,10 @@ class Desk:
             self.check_exits(now)
             return "killed"
         self.check_exits(now)
+        try:
+            self.follow_outcomes(now)
+        except Exception as e:
+            self._error("tracker", "", e)
         if not credits_ok(self.s):
             P.log_decision("risk", "", "", "PAUSE", "今月のHelius無料枠の上限に近いため新規の審査を停止")
             return "budget"
@@ -209,6 +221,16 @@ class Desk:
                     self._error("evaluate", m, e)
         self.heartbeat(now)
         return "ok"
+
+    def follow_outcomes(self, now=None):
+        """Verification engine: sample prices of every evaluated coin (free DexScreener calls)."""
+        now = now or time.time()
+        want = T.due(self.s, now)[:60]
+        prices = {}
+        if want:
+            pairs = self.fetch_pairs(want)
+            prices = {m: S.pair_price(pairs.get(m)) if pairs.get(m) else None for m in want}
+        T.update(self.s, prices, now)
 
     def heartbeat(self, now=None):
         self.s["last_heartbeat"] = int(now or time.time())

@@ -150,7 +150,7 @@ def test_rug_each_rule_fails(kw, expect, monkeypatch):
 
 
 def test_rug_liquidity_age_and_missing_pair():
-    assert not rug(p=pair(liq=20_000))["ok"]
+    assert not rug(p=pair(liq=C.MIN_LIQ_USD - 1))["ok"]
     assert not rug(p=pair(age_min=10))["ok"]
     r = A.rug_check("MINT", None, P.new_state(), {"bots": set(), "tokens": {}}, now=NOW)
     assert not r["ok"] and "データ不足" in r["reasons"][0]
@@ -320,3 +320,39 @@ def test_wallet_groups_found():
     toks += [{"early": [{"wallet": "A"}, {"wallet": "Z"}]}]
     g = scanner.wallet_groups(toks)
     assert g and set(g[0]["wallets"]) == {"A", "B", "C"} and g[0]["together"] == 3
+
+
+# ------------------------------------------------------------------ verification engine
+def test_simulate_uses_desk_exit_rules():
+    from desk import tracker as T
+    t0 = NOW
+    stop = [[t0, 1.0], [t0 + 300, 0.97], [t0 + 600, 0.90], [t0 + 900, 2.0]]
+    assert T.simulate(stop) == pytest.approx(-0.10 - T.FRICTION), "stopped out, later pump ignored"
+    tp = [[t0, 1.0], [t0 + 300, 1.30], [t0 + 600, 1.50], [t0 + 900, 1.30]]
+    r = T.simulate(tp)
+    assert r == pytest.approx(0.5 * 0.30 + 0.5 * 0.30 - T.FRICTION), "half at +30%, rest on trailing stop"
+
+
+def test_tracker_lifecycle_and_summary():
+    from desk import tracker as T
+    s = P.new_state()
+    T.start(s, "M1", "A", 1.0, 12_000, "REJECT", ["流動性 $8,000（$10,000未満）"], None, NOW)
+    T.start(s, "M2", "B", 1.0, 40_000, "BUY", [], 70, NOW)
+    for i in range(1, 50):
+        now = NOW + i * 300
+        T.update(s, {m: (1 + 0.02 * i if m == "M1" else 1 - 0.01 * i) for m in T.due(s, now)}, now)
+    assert not s["tracking"] and len(s["outcomes"]) == 2
+    sm = T.summarize(s["outcomes"])
+    assert sm["reason"]["流動性 N"]["avg"] > 0 > sm["decision"]["BUY"]["avg"]
+    assert set(sm["liq"]) == {"$10k〜30k", "$30k以上"}
+
+
+def test_rejected_coins_are_tracked(monkeypatch):
+    s = P.new_state()
+    s["candidates"]["M"] = {"seen": NOW - 1800, "grad": None, "symbol": "X", "status": "waiting", "checks": 0}
+    d = M.Desk(state=s, fetch_pairs=lambda ms: {m: pair() for m in ms},
+               rug=lambda *a: {"ok": False, "reasons": ["流動性 $1"], "facts": {}})
+    monkeypatch.setattr(M, "credits_ok", lambda st: True)
+    monkeypatch.setattr(M, "load_radar", lambda: {"bots": set(), "tokens": {}})
+    d.cycle(NOW)
+    assert "M" in s["tracking"] and s["tracking"]["M"]["decision"] == "REJECT"

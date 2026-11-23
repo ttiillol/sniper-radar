@@ -33,7 +33,7 @@ TRAIL_DIST = 0.12                   # ...and sells if price falls 12% from the p
 MAX_HOLD_MIN = 240                  # time stop
 
 # --- rug rules (design doc) ---------------------------------------------------
-MIN_LIQ_USD = 30_000
+MIN_LIQ_USD = 10_000                # was 30k: only 10% of graduates passed (data 2026-11-23)
 MIN_AGE_AFTER_GRAD_MIN = 20
 MAX_AGE_AFTER_GRAD_MIN = 180        # stop considering very old graduations
 MAX_DEV_PCT = 0.05
