@@ -967,3 +967,10 @@ def test_scalp_free_precheck_skips_expensive_checks(monkeypatch):
     st["pair"] = dict(st["pair"], priceChange={"m5": 2.5, "h1": 30})
     d.cycle(NOW + 3 * C.SCALP_RECHECK_SEC)
     assert "M" in s["positions"] and len(calls) == 1
+
+
+def test_skipped_coin_is_not_reopened_every_scan(monkeypatch):
+    d, s, st, _ = _scalp_desk(monkeypatch, pr=dict(pair(liq=15), pairAddress="P"))
+    d.cycle(NOW)
+    c = s["candidates"]["M"]
+    assert c["status"] == "skipped" and c["last_eval"] == NOW

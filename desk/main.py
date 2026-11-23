@@ -211,6 +211,7 @@ class Desk:
             c = self.s["candidates"].setdefault(mint, {"seen": int(now), "grad": None, "symbol": "",
                                                        "status": "waiting", "checks": 0})
             c["status"] = "skipped"
+            c["last_eval"] = int(now)          # the scout won't re-open it for 15 minutes
             st = self.s["stats"].setdefault("prefiltered", {})
             key = re.sub(r"\$?\d[\d,\.]*", "N", bad.split("（")[0])
             st[key] = st.get(key, 0) + 1
