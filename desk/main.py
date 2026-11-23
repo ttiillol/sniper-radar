@@ -24,6 +24,7 @@ from . import live as L
 from . import journal as J
 from . import flow as F
 from . import selfcheck as SC
+from . import watch as WW
 import scanner
 
 
@@ -644,6 +645,35 @@ async def run_loop(minutes):
         else:
             L.note("scout", "注目ランキングを確認（新しい候補なし）")
 
+    def watch_wallets():
+        evs = WW.poll(desk.s, F.load_kols(), scanner.rpc)
+        if not evs:
+            return
+        pairs = desk.fetch_pairs(list({e["mint"] for e in evs})) or {}
+        now = time.time()
+        for e in evs:
+            pr = pairs.get(e["mint"]) or {}
+            sym = (pr.get("baseToken") or {}).get("symbol") or e["mint"][:6]
+            word = "買い" if e["side"] == "buy" else "売り"
+            L.step("new", f"見張り中の財布「{e['name']}」が {sym} を{word}", sym, e["mint"], "NEW", agent="kol",
+                   note=f"{e['name']} が {sym} を{word}")
+            N.send_async(f"WATCH {e['name'][:14]} {word} {sym}",
+                         f"見張り中の財布が {sym} を{word}ました（数量 {e['amount']:,.0f}）\n"
+                         f"流動性 ${((pr.get('liquidity') or {}).get('usd') or 0):,.0f} ・ "
+                         + ("審査待ちに追加（安全チェックと勢いの判定を通れば練習買い）" if e["side"] == "buy" else "参考情報"),
+                         click=f"https://dexscreener.com/solana/{e['mint']}")
+            if e["side"] != "buy":
+                continue
+            ks = desk.s.setdefault("kol_seen", [])
+            ks.append({"ts": int(now), "mint": e["mint"], "symbol": sym, "names": [e["name"][:24]], "n": 1, "a": 0})
+            del ks[:-60]
+            c = desk.s["candidates"].get(e["mint"])
+            if c is None and e["mint"] not in desk.s["positions"]:
+                desk.s["candidates"][e["mint"]] = {"seen": int(now), "refreshed": int(now), "grad": None, "symbol": sym,
+                                                   "status": "waiting", "checks": 0, "watch_buy": e["name"]}
+            elif c is not None and c.get("status") in ("rejected", "expired", "skipped") and now >= c.get("hard_until", 0):
+                c.update(status="waiting", checks=0, next_check=0, refreshed=int(now), watch_buy=e["name"])
+
     def check_sources():
         r = SC.run()
         desk.s["selfcheck"] = r
@@ -656,6 +686,7 @@ async def run_loop(minutes):
         last_sum = time.time()
         last_scout = 0
         last_check = time.time() - 6 * 3600 + 60          # first self check one minute after start
+        last_watch = 0
         while time.time() < until:
             day_report()
             if C.FLOW_ON and time.time() - last_check > 6 * 3600:
@@ -664,6 +695,12 @@ async def run_loop(minutes):
                     await asyncio.to_thread(check_sources)
                 except Exception as e:
                     desk._error("selfcheck", "", e)
+            if C.FLOW_ON and time.time() - last_watch > C.WATCH_EVERY_SEC:
+                last_watch = time.time()
+                try:
+                    await asyncio.to_thread(watch_wallets)
+                except Exception as e:
+                    desk._error("watch", "", e)
             if C.FLOW_ON and time.time() - last_scout > C.TRENDING_EVERY_SEC:
                 last_scout = time.time()
                 try:

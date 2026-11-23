@@ -2,6 +2,7 @@
 # Use as a BENCHMARK, not a copy list: most leaderboard gains cannot be reproduced by followers.
 # Format: address  tier  # name | rank | monthly wins/losses | monthly PnL SOL
 # Tier A = <= 600 trades/month (deliberate picks, buy counts +10). Tier B = high-frequency, bot-like (+4).
+# Tier W = watched wallet: every buy/sell is pushed to the phone within ~1 minute and the coin is queued for review (+4).
 # Refresh: ask Claude to re-read the kolscan monthly leaderboard.
 EqiFgyNw6kgrmYstWyrP8VjKhka7XEmKTZzHSmwpr1Zb B  # ban | #1 | 1870W/1887L | +1994.11 SOL
 B3wagQZiZU2hKa5pUCj6rrdhWsX3Q6WfTTnki9PjwzMh A  # xander | #2 | 83W/123L | +1878.46 SOL
@@ -53,3 +54,4 @@ BTf4A2exGK9BCVDNzy65b9dUzXgMqB4weVkvTMFQsadd B  # Kev | #47 | 876W/1637L | +90.1
 EeXvxkcGqMDZeTaVeawzxm9mbzZwqDUMmfG3bF7uzumH B  # milito | #48 | 297W/530L | +89.88 SOL
 FAicXNV5FVqtfbpn4Zccs71XcfGeyxBSGbqLDyDJZjke B  # radiance | #49 | 334W/514L | +84.60 SOL
 363sqMFaxZgvCoGzxKjXe1BqMGYkSVoCwmghZUndXuaT A  # nad | #50 | 141W/206L | +82.57 SOL
+AVAZvHLR2PcWpDf8BXY4rVxNHYRBytycHkcB5z5QNXYm W  # Ansem(とされる) | widely attributed to Ansem; he denied it on X 2026-06; kolscan lists it as anon | watch

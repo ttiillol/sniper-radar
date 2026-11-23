@@ -771,7 +771,8 @@ def test_kol_list_file_is_valid():
     from desk import flow as F
     F._kol_cache.update(t=0.0, v={})
     k = F.load_kols()
-    assert len(k) == 50 and sum(1 for v in k.values() if v["tier"] == "A") == 20
+    assert len(k) == 51 and sum(1 for v in k.values() if v["tier"] == "A") == 20
+    assert k["AVAZvHLR2PcWpDf8BXY4rVxNHYRBytycHkcB5z5QNXYm"] == {"tier": "W", "name": "Ansem(とされる)"}
     b58 = _re.compile(r"^[1-9A-HJ-NP-Za-km-z]{32,44}$")
     assert all(b58.match(a) for a in k) and k["862TYSvRYoiHAK3F3WwTRYAfuGiQaGdxedN9AGvRGWo2"]["name"] == "Wugi"
 
@@ -1098,3 +1099,42 @@ def test_dip_without_buyers_back_keeps_waiting(monkeypatch):
     d.cycle(t + 400)
     c = s["candidates"]["M"]
     assert not s["positions"] and c["status"] == "waiting" and c["next_check"] == t + 400 + C.SCALP_RECHECK_SEC
+
+
+# ------------------------------------------------------------------ wallet watch (tier W, e.g. the wallet attributed to Ansem)
+def _tx(owner, mint, pre, post, err=None):
+    tb = lambda v: [{"owner": owner, "mint": mint, "uiTokenAmount": {"uiAmount": v}},
+                    {"owner": owner, "mint": "So11111111111111111111111111111111111111112", "uiTokenAmount": {"uiAmount": 5}}]
+    return {"meta": {"err": err, "preTokenBalances": tb(pre), "postTokenBalances": tb(post)}}
+
+
+def test_wallet_watch_reports_new_buys_and_sells():
+    from desk import watch as W
+    kols = {"ANS": {"tier": "W", "name": "Ansem(とされる)"}, "X": {"tier": "A", "name": "xander"}}
+    chain = {"sigs": [{"signature": "s0", "blockTime": NOW - 100}], "tx": {}}
+    calls = []
+
+    def rpc(method, params):
+        calls.append((method, params[0]))
+        if method == "getSignaturesForAddress":
+            return chain["sigs"]
+        return chain["tx"][params[0]]
+    s = {}
+    assert W.poll(s, kols, rpc, NOW) == [] and s["wwatch"]["ANS"]["last"] == "s0"    # first look: nothing old
+    assert ("getSignaturesForAddress", "X") not in calls, "only tier-W wallets are polled"
+    chain["sigs"] = [{"signature": "s2", "blockTime": NOW}, {"signature": "s1", "blockTime": NOW - 10}] + chain["sigs"]
+    chain["tx"] = {"s1": _tx("ANS", "COIN", 0, 1_000_000), "s2": _tx("ANS", "OLD", 500, 0)}
+    ev = W.poll(s, kols, rpc, NOW)
+    assert [(e["mint"], e["side"]) for e in ev] == [("COIN", "buy"), ("OLD", "sell")]
+    assert ev[0]["name"] == "Ansem(とされる)" and s["wwatch"]["ANS"]["last"] == "s2"
+    assert W.poll(s, kols, rpc, NOW + 60) == [], "nothing new"
+
+
+def test_wallet_watch_never_raises():
+    from desk import watch as W
+
+    def boom(*a):
+        raise RuntimeError("rpc down")
+    s = {}
+    assert W.poll(s, {"ANS": {"tier": "W", "name": "A"}}, boom, NOW) == []
+    assert s["wwatch"]["ANS"]["error"] == "RuntimeError"
