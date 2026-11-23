@@ -1045,3 +1045,56 @@ def test_perfect_momentum_buys_big(monkeypatch):
 def _rug_ok(mint, p, state, radar):
     return A.V(True, reasons=["全項目合格"], notes=[], creator="DEV",
                facts={"liq": (p.get("liquidity") or {}).get("usd"), "holders": 900, "creator": "DEV", "top10_pct": 12.0})
+
+
+# ------------------------------------------------------------------ no chasing: buy the pullback after a spike
+def _spike(price, m5=14.0, h1=60.0):
+    return dict(pair(price=price, m5=m5, h1=h1), dexId="meteora", pairAddress="POOL")
+
+
+def test_spike_is_not_chased_and_dip_with_bounce_is_bought(monkeypatch):
+    calls = []
+    t = NOW
+    buys_back = {"v": [_tr(t + 400 - i, "buy", 150, f"b{i}") for i in range(20)] + [_tr(t + 390, "sell", 300, "s")]}
+    d, s, st, _ = _scalp_desk(monkeypatch, pr=_spike(0.0010), trades=buys_back, rug_calls=calls)
+    d.cycle(t)                                                         # +14% in 5 min -> watch, no rug call
+    c = s["candidates"]["M"]
+    assert not s["positions"] and c["pb"]["peak"] == 0.0010 and calls == []
+    st["pair"] = _spike(0.0011)                                         # still rising -> new high
+    d.cycle(t + 20)
+    assert c["pb"]["peak"] == 0.0011 and not s["positions"]
+    st["pair"] = _spike(0.00103, m5=-4)                                 # -6.4% from the high, no bounce yet
+    d.cycle(t + 40)
+    assert not s["positions"] and calls == []
+    st["pair"] = _spike(0.001045, m5=-2)                                # bounced 1.5% off the low, buyers back
+    d.cycle(t + 400)
+    assert "M" in s["positions"] and len(calls) == 1 and "pb" not in c
+
+
+def test_broken_spike_is_given_up(monkeypatch):
+    d, s, st, _ = _scalp_desk(monkeypatch, pr=_spike(0.0010))
+    d.cycle(NOW)
+    st["pair"] = _spike(0.00082, m5=-15)                               # -18% from the high
+    d.cycle(NOW + 20)
+    assert s["candidates"]["M"]["status"] == "rejected" and not s["positions"]
+
+
+def test_pullback_wait_has_a_time_limit(monkeypatch):
+    d, s, st, _ = _scalp_desk(monkeypatch, pr=_spike(0.0010))
+    d.cycle(NOW)
+    st["pair"] = _spike(0.00099, m5=3)                                  # shallow dip, never a proper pullback
+    d.cycle(NOW + C.PULLBACK_TTL_SEC + 1)
+    assert s["candidates"]["M"]["status"] == "rejected"
+
+
+def test_dip_without_buyers_back_keeps_waiting(monkeypatch):
+    t = NOW
+    sellers = {"v": [_tr(t + 400 - i, "sell", 150, f"s{i}") for i in range(20)] + [_tr(t + 390, "buy", 100, "b")]}
+    d, s, st, _ = _scalp_desk(monkeypatch, pr=_spike(0.0010), trades=sellers)
+    d.cycle(t)
+    st["pair"] = _spike(0.00094, m5=-5)
+    d.cycle(t + 40)
+    st["pair"] = _spike(0.00096, m5=-3)                                 # bounce, but sellers still dominate
+    d.cycle(t + 400)
+    c = s["candidates"]["M"]
+    assert not s["positions"] and c["status"] == "waiting" and c["next_check"] == t + 400 + C.SCALP_RECHECK_SEC

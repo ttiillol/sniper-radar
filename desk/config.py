@@ -61,7 +61,7 @@ STRATEGY = "scalp"
 EXIT_PROFILE = {"sl": -0.06, "arm0": 0.06, "trail0": 0.04, "tps": [(0.10, 0.5)], "be": 0.01,
                 "arm": 0.15, "trail": 0.06, "stale_min": 20, "max_min": 45}
 SCALP_MIN_M5 = 1.0                  # price change over the last 5 minutes must be at least +1%...
-SCALP_MAX_M5 = 25.0                 # ...but not a vertical spike (no chasing)
+SCALP_MAX_M5 = 8.0                  # ...but not a spike (no chasing; was 25%, two fast stop-outs on day 1)
 SCALP_MIN_H1 = 0.0                  # and the last hour must be up (trend)
 SCALP_MIN_PRESSURE = 0.55           # buyers' share of USD volume in the last 10 minutes
 SCALP_MIN_VOL_M5 = 3_000            # USD traded in the last 5 minutes (activity)
@@ -73,6 +73,12 @@ SCALP_MAX_TRADES_PER_COIN = 3       # per coin per Hawaii day
 SCALP_RECHECK_REJECTED_MIN = 15     # a coin rejected earlier is re-examined if it trends again 15+ min later
 SCALP_CAND_TTL_SEC = 2 * 3600       # forget candidates that stopped trending
 REFINE_EVERY_SEC = 60               # 1-minute-candle re-scoring: one coin per minute (GeckoTerminal budget)
+PULLBACK_MIN_H1 = 20.0              # a spike above SCALP_MAX_M5 is watched for a pullback only in a strong 1h trend
+PULLBACK_MIN = 0.04                 # buy the dip only after a 4%+ pullback from the spike's high...
+PULLBACK_MAX = 0.15                 # ...but a fall of more than 15% means the move broke -> give up
+PULLBACK_BOUNCE = 0.01              # and only once price bounced 1% off the dip's low
+PULLBACK_PRESSURE = 0.60            # with buyers back in control over the last 2 minutes
+PULLBACK_TTL_SEC = 900              # wait at most 15 minutes for the pullback
 EARLY_CHECK_MAX_AGE_MIN = 360       # early-buyer (bundle/sniper) analysis only for coins younger than 6h
 # legacy single-rule exits (profile A, kept for comparison only)
 STOP_LOSS = -0.06

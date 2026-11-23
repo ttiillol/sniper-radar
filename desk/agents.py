@@ -217,7 +217,43 @@ def rug_check(mint, pair, state, radar, now=None, rpc=None, rc=None, gp=None, ho
 
 
 # ============================================================ 4b. Momentum (scalp gate)
-def momentum(pair, flow=None, pre=False):
+def pullback(cand, pair, now):
+    """PULLBACK agent: after a spike, wait for a dip and a bounce instead of chasing.
+    Returns (state, reason): state None (no spike), 'start', 'watch', 'ready' or 'cancel'."""
+    pc = pair.get("priceChange") or {}
+    m5, h1 = float(pc.get("m5") or 0), float(pc.get("h1") or 0)
+    try:
+        price = float(pair.get("priceUsd") or 0)
+    except (TypeError, ValueError):
+        price = 0.0
+    pb = cand.get("pb")
+    if not price:
+        return (None, "") if pb is None else ("watch", "価格不明")
+    if pb is None:
+        if m5 > C.SCALP_MAX_M5 and h1 >= C.PULLBACK_MIN_H1:
+            cand["pb"] = {"peak": price, "low": price, "t": now}
+            return "start", f"5分で+{m5:.0f}%の急騰 → 飛び乗らずに押し目を待つ"
+        return None, ""
+    if now - pb["t"] > C.PULLBACK_TTL_SEC:
+        cand.pop("pb", None)
+        return "cancel", f"{C.PULLBACK_TTL_SEC // 60}分待っても押し目買いの形にならない"
+    if price > pb["peak"]:
+        pb.update(peak=price, low=price)
+        return "watch", "高値を更新中（まだ押していない）"
+    pb["low"] = min(pb["low"], price)
+    drop = 1 - pb["low"] / pb["peak"]
+    if drop > C.PULLBACK_MAX:
+        cand.pop("pb", None)
+        return "cancel", f"高値から{drop * 100:.0f}%下落（崩れた）"
+    if drop < C.PULLBACK_MIN:
+        return "watch", f"高値から{drop * 100:.1f}%（押しが浅い）"
+    bounce = price / pb["low"] - 1
+    if bounce < C.PULLBACK_BOUNCE:
+        return "watch", f"高値から{drop * 100:.0f}%押した → 下げ止まり待ち"
+    return "ready", f"押し目買いの形（高値から{drop * 100:.0f}%押して{bounce * 100:.1f}%戻した）"
+
+
+def momentum(pair, flow=None, pre=False, pullback=False):
     """MOMENTUM agent for the scalp strategy. ok=False means 'not now' (look again shortly),
     not 'bad coin'. Uses DexScreener price changes/volume + the last-10-minute order flow."""
     pc = pair.get("priceChange") or {}
@@ -226,6 +262,13 @@ def momentum(pair, flow=None, pre=False):
     tx5 = (pair.get("txns") or {}).get("m5") or {}
     b5, s5 = tx5.get("buys") or 0, tx5.get("sells") or 0
     why, score = [], 50
+    if pullback:                                   # dip entry: the 5-minute change is negative by design
+        p = (flow or {}).get("pressure")
+        if h1 < C.SCALP_MIN_H1:
+            return V(False, 0, [f"1時間の流れが下向き（{h1:+.1f}%）"])
+        if p is None or p < C.PULLBACK_PRESSURE:
+            return V(False, 0, [f"押し目で買いが戻っていない（直近2分の買い{(p or 0) * 100:.0f}%）"])
+        return V(True, 70, [f"押し目買い（1時間 +{h1:.0f}%・直近2分の買い{p * 100:.0f}%）"])
     if m5 > C.SCALP_MAX_M5:
         return V(False, 0, [f"5分で+{m5:.0f}%の急騰（飛び乗りになる）"])
     if m5 < C.SCALP_MIN_M5:

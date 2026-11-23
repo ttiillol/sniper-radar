@@ -233,6 +233,23 @@ class Desk:
         sym = ((pair or {}).get("baseToken") or {}).get("symbol", cand.get("symbol", ""))
         cand["symbol"] = sym
         if C.STRATEGY == "scalp":
+            # PULLBACK: a spike is not chased - wait for a dip and a bounce (free, DexScreener data only)
+            pbst, pbwhy = A.pullback(cand, pair, now)
+            if pbst in ("start", "watch", "cancel"):
+                cand["checks"] -= 1
+                self.s["stats"]["evaluated"] -= 1
+                if pbst == "cancel":
+                    cand["status"] = "rejected"
+                    L.step("reject", f"見送り（押し目）: {pbwhy}", sym, mint, "REJECT", agent="trend", note=f"{sym} {pbwhy[:30]}")
+                    return "skipped"
+                cand["next_check"] = now + C.SCALP_RECHECK_SEC
+                L.step("wait", f"押し目待ち: {pbwhy}", sym, mint, "WAIT", log=pbst == "start", agent="trend",
+                       note=f"{sym} {pbwhy[:30]}")
+                return "wait"
+            cand["pb_entry"] = pbst == "ready"
+            if cand["pb_entry"]:
+                L.step("work", pbwhy, sym, mint, agent="trend", note=f"{sym} {pbwhy[:30]}")
+        if C.STRATEGY == "scalp" and not cand.get("pb_entry"):
             # free momentum pre-check first: the expensive safety checks only run on coins that are moving
             pre = A.momentum(pair, pre=True)
             if not pre["ok"]:
@@ -320,7 +337,17 @@ class Desk:
                 return reject("Flow", fv["reasons"], facts=rg["facts"])
         mom = None
         if C.STRATEGY == "scalp":
-            mom = A.momentum(pair, fl)
+            if cand.get("pb_entry"):
+                tr2 = tr if C.FLOW_ON else None
+                fl2 = F.analyze(tr2, now, rg["facts"].get("creator"), window_min=2) if tr2 else None
+                mom = A.momentum(pair, fl2, pullback=True)
+                if not mom["ok"]:
+                    cand["next_check"] = now + C.SCALP_RECHECK_SEC       # keep watching the dip
+                    L.step("wait", f"押し目待ち: {mom['reasons'][0]}", sym, mint, "WAIT", log=False, agent="trend",
+                           note=f"{sym} {mom['reasons'][0][:30]}")
+                    return "watch"
+            else:
+                mom = A.momentum(pair, fl)
             if not mom["ok"]:
                 if cand["checks"] < C.SCALP_MAX_CHECKS:
                     cand["next_check"] = now + C.SCALP_RECHECK_SEC
@@ -379,6 +406,8 @@ class Desk:
                                  f"点数{score}・{A.TIER_JA[tier]}", now, tier=tier, gap=rk.get("gap"))
         cand["status"] = "bought"
         cand.pop("reentry", None)
+        cand.pop("pb", None)
+        cand.pop("pb_entry", None)
         day = P.hst_day(now)
         cnt = cand.get("trades_day") or [day, 0]
         cand["trades_day"] = [day, (cnt[1] if cnt[0] == day else 0) + 1]
