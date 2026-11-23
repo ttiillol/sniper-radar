@@ -44,6 +44,7 @@ def fake_analyze(mint, creator):
 
 scanner.websockets.connect = lambda *a, **k: FakeWS()
 scanner.analyze_token = fake_analyze
+scanner.requests.get = lambda *a, **k: (_ for _ in ()).throw(RuntimeError('offline'))
 asyncio.run(scanner.run(minutes=0.05, max_tokens=40))   # 3 seconds of listening
 
 meta = json.loads((tmp / "meta.json").read_text())

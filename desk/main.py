@@ -232,7 +232,15 @@ async def run_loop(minutes):
     desk.s["stats"]["backfilled"] = desk.s["stats"].get("backfilled", 0) + n
 
     async def ticker():
+        last_fill = time.time()
         while time.time() < until:
+            if time.time() - last_fill > 600:
+                last_fill = time.time()
+                try:
+                    k = await asyncio.to_thread(desk.scanner.backfill, desk.s)
+                    desk.s["stats"]["backfilled"] = desk.s["stats"].get("backfilled", 0) + k
+                except Exception as e:
+                    desk._error("backfill", "", e)
             try:
                 r = await asyncio.to_thread(desk.cycle)
             except Exception as e:             # a bug must never stop the desk

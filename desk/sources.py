@@ -119,5 +119,6 @@ async def listen_migrations(on_migration, until):
                     if msg.get("mint") and "migrat" in str(msg.get("txType", "migrate")).lower():
                         on_migration(msg)
         except Exception as e:
+            scanner.ERR_SAMPLES.setdefault("pumpportal", repr(e)[:140])
             print("migration ws error:", repr(e)[:120], flush=True)
             await asyncio.sleep(5)

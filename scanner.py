@@ -363,11 +363,30 @@ async def run(minutes, max_tokens):
                                                            if RPC_KIND == "helius" else {})))
         write_derived(wallets, tokens, meta, DATA)
 
+    known = set()
+    feed = {"last_msg": time.time()}
+    src = stats.setdefault("sources", {"ws": 0, "poll": 0, "ws_connects": 0, "ws_errors": 0})
+
+    def offer(mint, name, symbol, creator, origin):
+        if not mint or mint in known:
+            return
+        known.add(mint)
+        src[origin] += 1
+        stats["seen"] += 1
+        # spread the per-run quota evenly over the listening window
+        frac = (time.time() - start) / (minutes * 60)
+        allowed = min(max_tokens, int(max_tokens * frac) + 5)
+        if stats["queued"] < allowed and not stop["budget"]:
+            stats["queued"] += 1
+            queue.append([time.time() + WAIT_BEFORE_CHECK, {"mint": mint, "name": name or "",
+                                                            "symbol": symbol or "", "creator": creator or ""}, 0])
+
     async def listen():
         while time.time() < deadline:
             try:
-                async with websockets.connect(PUMPPORTAL_WS, ping_interval=20) as ws:
+                async with websockets.connect(PUMPPORTAL_WS, ping_interval=20, open_timeout=15) as ws:
                     await ws.send(json.dumps({"method": "subscribeNewToken"}))
+                    src["ws_connects"] += 1
                     print("connected to PumpPortal", flush=True)
                     while time.time() < deadline:
                         try:
@@ -377,19 +396,35 @@ async def run(minutes, max_tokens):
                         msg = json.loads(raw)
                         if msg.get("txType") != "create" or not msg.get("mint"):
                             continue
-                        stats["seen"] += 1
-                        # spread the per-run quota evenly over the listening window
-                        frac = (time.time() - start) / (minutes * 60)
-                        allowed = min(max_tokens, int(max_tokens * frac) + 5)
-                        if stats["queued"] < allowed and not stop["budget"]:
-                            stats["queued"] += 1
-                            queue.append([time.time() + WAIT_BEFORE_CHECK, {
-                                "mint": msg["mint"], "name": msg.get("name", ""),
-                                "symbol": msg.get("symbol", ""),
-                                "creator": msg.get("traderPublicKey", "")}, 0])
+                        feed["last_msg"] = time.time()
+                        offer(msg["mint"], msg.get("name"), msg.get("symbol"), msg.get("traderPublicKey"), "ws")
             except Exception as e:
+                src["ws_errors"] += 1
+                ERR_SAMPLES.setdefault("pumpportal", repr(e)[:140])
                 print("ws error, reconnecting:", repr(e)[:120], flush=True)
                 await asyncio.sleep(5)
+
+    async def poll_backup():
+        """If PumpPortal goes quiet for 60 s, read pump.fun's newest coins directly instead."""
+        url = ("https://frontend-api-v3.pump.fun/coins?offset=0&limit=50&sort=created_timestamp"
+               "&order=DESC&includeNsfw=true")
+        while time.time() < deadline:
+            await asyncio.sleep(15)
+            if time.time() - feed["last_msg"] < 60:
+                continue
+            try:
+                r = await asyncio.to_thread(requests.get, url, timeout=15,
+                                            headers={"User-Agent": "sniper-radar/1.0"})
+                rows = r.json() if r.status_code == 200 else None
+                if not isinstance(rows, list):
+                    ERR_SAMPLES.setdefault("pumpfun_api", f"HTTP {r.status_code}")
+                    continue
+                for c in reversed(rows):
+                    ts = (c.get("created_timestamp") or 0) / 1000
+                    if ts and time.time() - ts < WAIT_BEFORE_CHECK + 120:   # only genuinely new coins
+                        offer(c.get("mint"), c.get("name"), c.get("symbol"), c.get("creator"), "poll")
+            except Exception as e:
+                ERR_SAMPLES.setdefault("pumpfun_api", repr(e)[:140])
 
     def fail(reason):
         stats["skipped"] += 1
@@ -443,7 +478,7 @@ async def run(minutes, max_tokens):
             fail("out_of_time")
 
     meta["runs"] = meta.get("runs", 0) + 1
-    await asyncio.gather(listen(), worker())
+    await asyncio.gather(listen(), poll_backup(), worker())
     save()
     print("done", json.dumps(meta["last_stats"]), flush=True)
 
