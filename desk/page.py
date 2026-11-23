@@ -33,6 +33,7 @@ def build(site: Path):
 
 TEMPLATE = r"""<!DOCTYPE html>
 <html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="refresh" content="60">
 <title>練習売買デスク</title>
 <style>
 :root{--bg:#0f1115;--card:#181b22;--line:#262a33;--tx:#e8eaf0;--mut:#8b91a0;--red:#ff5d5d;--org:#ffa53d;--grn:#3ddc84;--acc:#6aa8ff}
@@ -48,6 +49,9 @@ a{color:var(--acc);text-decoration:none}h1{font-size:20px;margin:4px 0 2px}.sub{
 .BUY{background:#0f2e1d;color:var(--grn)}.SELL{background:#16263f;color:var(--acc)}.REJECT{background:#2a2d35;color:var(--mut)}.WATCH{background:#3a2810;color:var(--org)}.RESUME,.PAUSE,.NO_PRICE,.ERROR{background:#3a1416;color:var(--red)}
 .small{font-size:11.5px;color:var(--mut)}.bar{height:8px;border-radius:9px;background:#11141a;overflow:hidden;margin-top:6px}.bar i{display:block;height:100%;background:var(--red)}
 .filters{display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap}.f{padding:5px 10px;border-radius:99px;background:#11141a;font-size:12px;color:var(--mut)}.f.on{background:var(--acc);color:#04122a;font-weight:700}
+.fd{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--line);font-size:13.5px}.fd:first-child{border-top:0}
+.lb{font:700 11px ui-monospace,Menlo,monospace;padding:3px 0;width:46px;text-align:center;border-radius:6px;flex:none}
+.L-BUY{background:#0f2e1d;color:var(--grn)}.L-SELL{background:#16263f;color:var(--acc)}.L-STOP{background:#3a1416;color:var(--red)}.L-SKIP{background:#2a2d35;color:var(--mut)}
 .warn{font-size:12.5px;color:var(--mut)}.warn b{color:var(--org)}
 </style></head><body>
 <div class="nav"><a href="./">🎯 レーダー</a><a class="on" href="desk.html">📈 デスク</a></div>
@@ -63,6 +67,7 @@ a{color:var(--acc);text-decoration:none}h1{font-size:20px;margin:4px 0 2px}.sub{
 <div class="small" style="margin-top:10px">今日の損失枠 <span id="dl"></span></div><div class="bar"><i id="dlb"></i></div>
 <div class="small" style="margin-top:8px">累計の損失枠 <span id="tl"></span></div><div class="bar"><i id="tlb"></i></div>
 </div>
+<div class="card"><h2>📡 ライブフィード <span class="small">（1分ごとに自動更新）</span></h2><div id="feed"></div></div>
 <div class="card" id="hc"></div>
 <div class="card"><h2>保有中</h2><div id="poss"></div></div>
 <div class="card"><h2>判断の記録</h2>
@@ -94,6 +99,14 @@ $("#banner").innerHTML=D.halted?`<div class="banner b-red">⛔ 完全停止中�
 const P=Object.entries(D.positions);
 $("#poss").innerHTML=P.length?P.map(([m,p])=>`<div class="row"><b>${(p.symbol||"?").replace(/</g,"")}</b> ${usd(p.cost)} ・ ${ago(p.opened)}に購入${p.half_sold?" ・ 半分利確済":""}
  <div class="small">買値 ${p.entry.toPrecision(4)} ・ 最高値 ${(p.peak/p.entry*100-100).toFixed(1)}% ・ <a href="https://dexscreener.com/solana/${m}" target="_blank" rel="noopener">チャート</a></div></div>`).join(""):'<div class="small">保有なし</div>';
+(function(){
+  const lab=d=>d.action==="BUY"?"BUY":d.action==="SELL"?((d.reason||"").startsWith("損切り")?"STOP":"SELL"):d.action==="REJECT"?"SKIP":null;
+  const F=D.decisions.map(d=>[lab(d),d]).filter(x=>x[0]).slice(0,40);
+  $("#feed").innerHTML=F.length?F.map(([l,d])=>{const pnl=(d.reason||"").match(/[+-]\d+(\.\d+)?%/);
+    return `<div class="fd"><span class="lb L-${l}">${l}</span><div style="flex:1;min-width:0"><b>${(d.symbol||"?").replace(/</g,"")}</b>
+    <span class="small">${ago(d.ts)}</span><div class="small">${(d.reason||"").replace(/^\[Rug\] /,"").replace(/</g,"").slice(0,90)}</div></div></div>`}).join("")
+   :'<div class="small">まだ動きがありません</div>';
+})();
 const NM={BUY:"買い",SELL:"売り",REJECT:"見送り",WATCH:"様子見",RESUME:"再開",PAUSE:"一時停止",NO_PRICE:"価格不明",ERROR:"エラー"};
 let F="all";function drawDec(){const L=D.decisions.filter(d=>F==="all"||d.action===F).slice(0,60);
  $("#dec").innerHTML=L.length?L.map(d=>`<div class="row"><span class="tag ${d.action}">${NM[d.action]||d.action}</span><b>${(d.symbol||"").replace(/</g,"")}</b> <span class="small">${ago(d.ts)}</span>
