@@ -1,3 +1,55 @@
-# KOL WATCH: Solana wallet addresses of traders/influencers to follow, one per line.
-# A buy from any of these in the last 10 minutes adds up to +20 to the flow score.
-# Example:  <address>   # name
+# KOL WATCH benchmark list. Source: kolscan.io monthly leaderboard (owned by pump.fun), read 2026-11-23.
+# Use as a BENCHMARK, not a copy list: most leaderboard gains cannot be reproduced by followers.
+# Format: address  tier  # name | rank | monthly wins/losses | monthly PnL SOL
+# Tier A = <= 600 trades/month (deliberate picks, buy counts +10). Tier B = high-frequency, bot-like (+4).
+# Refresh: ask Claude to re-read the kolscan monthly leaderboard.
+EqiFgyNw6kgrmYstWyrP8VjKhka7XEmKTZzHSmwpr1Zb B  # ban | #1 | 1870W/1887L | +1994.11 SOL
+B3wagQZiZU2hKa5pUCj6rrdhWsX3Q6WfTTnki9PjwzMh A  # xander | #2 | 83W/123L | +1878.46 SOL
+4vw54BmAogeRV3vPKWyFet5yf8DTLcREzdSzx4rw9Ud9 B  # decu | #3 | 1684W/1592L | +1747.18 SOL
+ardinRsN1mNYVeoJWTBsWeYeXvuR9UUDGMsCDKpb6AT B  # trunoest | #4 | 1359W/1204L | +1645.82 SOL
+J23qr98GjGJJqKq9CBEnyRhHbmkaVxtTJNNxKu597wsA A  # gr3g | #5 | 76W/92L | +1324.54 SOL
+862TYSvRYoiHAK3F3WwTRYAfuGiQaGdxedN9AGvRGWo2 A  # Wugi | #6 | 71W/2L | +1169.12 SOL
+5dzH7gh5FjtrxUwtfBufJyTBA4fyCUGheZsdYQsE9vag A  # Hermes | #7 | 11W/22L | +912.03 SOL
+5hAgYC8TJCcEZV7LTXAzkTrm7YL29YXyQQJPCNrG84zM B  # Schoen | #8 | 785W/797L | +849.72 SOL
+JDd3hy3gQn2V982mi1zqhNqUw1GfV2UL6g76STojCJPN B  # West | #9 | 510W/789L | +654.56 SOL
+DYAn4XpAkN5mhiXkRB7dGq4Jadnx6XYgu8L5b3WGhbrt A  # The Doc | #10 | 221W/332L | +584.53 SOL
+H31vEBxSJk1nQdUN11qZgZyhScyShhscKhvhZZU3dQoU B  # Megga | #11 | 873W/1164L | +539.89 SOL
+387FRwow6MKDhSwuMULhKjqeXuxoBY4BbbaSntdk9LaH B  # Shawty | #12 | 1370W/1167L | +425.88 SOL
+J9TYAsWWidbrcZybmLSfrLzryANf4CgJBLdvwdGuC8MB B  # Johnson | #13 | 368W/267L | +373.33 SOL
+9iaawVBEsFG35PSwd4PahwT8fYNQe9XYuRdWm872dUqY B  # Meechie | #14 | 439W/788L | +337.51 SOL
+89HbgWduLwoxcofWpmn1EiF9wEdpgkNDEyPjzZ72mkDi B  # AlxCooks | #15 | 584W/875L | +330.41 SOL
+G6fUXjMKPJzCY1rveAE6Qm7wy5U3vZgKDJmN1VPAdiZC A  # clukz | #16 | 228W/239L | +305.83 SOL
+6FWhUybWmnjsQ933v2r6o7bhEG5yH9g9XsV7NVWKj5EW B  # WheresLodo | #17 | 690W/738L | +286.93 SOL
+CkPFGv2Wv1vwdWjtXioEgb8jhZQfs3eVZez3QCetu7xD B  # Lynk | #18 | 402W/632L | +269.08 SOL
+2T5NgDDidkvhJQg8AHDi74uCFwgp25pYFMRZXBaCUNBH A  # Idontpaytaxes | #19 | 187W/147L | +260.02 SOL
+FqojC24nUn3x6oMQC2ypBHmtH7rFAnKS6DvwsJoCMaiv B  # CoCo | #20 | 287W/478L | +257.27 SOL
+4BdKaxN8G6ka4GYtQQWk4G4dZRUTX2vQH9GcXdBREFUk A  # Jijo | #21 | 203W/177L | +252.95 SOL
+Gn9jrmzjYPfAFsXpauik2FkkPZ9bSReAffKiMQR1qeZb B  # Hien | #22 | 1169W/1577L | +226.44 SOL
+CEUA7zVoDRqRYoeHTP58UHU6TR8yvtVbeLrX1dppqoXJ A  # Tom | #23 | 215W/298L | +221.68 SOL
+G3gZWqrYkNmYFKYCyfRCNtGuxdyuE2wiYKkZpiZn4WSS A  # Goyim | #24 | 30W/89L | +213.72 SOL
+78N177fzNJpp8pG49xDv1efYcTMSzo9tPTKEA9mAVkh2 A  # Sheep | #25 | 303W/210L | +209.15 SOL
+FzVQSzj8JJr6WMGqbUHzx2XH1KkrfxRrRPv6WcbbZmND B  # DustNukes | #26 | 599W/1021L | +206.44 SOL
+8MaVa9kdt3NW4Q5HyNAm1X5LbR8PQRVDc1W8NMVK88D5 B  # Daumen | #27 | 1066W/848L | +198.02 SOL
+BQVz7fQ1WsQmSTMY3umdPEPPTm1sdcBcX9sP7o6kPRmB B  # Limfork.eth | #28 | 745W/656L | +196.50 SOL
+7Js5gmq57y9jG2sseKrAeJt3vbncSWSFFHDEsyJDnyVm B  # Yami | #29 | 744W/984L | +175.53 SOL
+sAdNbe1cKNMDqDsa4npB3TfL62T14uAo2MsUQfLvzLT B  # Ethan Prosper | #30 | 230W/441L | +174.20 SOL
+CgaA9a1JwAXJyfHuvZ7VW8YfTVRkdiT5mjBBSKcg7Rz5 B  # Art | #31 | 464W/793L | +169.10 SOL
+AuPp4YTMTyqxYXQnHc5KUc6pUuCSsHQpBJhgnD45yqrf A  # Dani | #32 | 81W/163L | +162.27 SOL
+6S8GezkxYUfZy9JPtYnanbcZTMB87Wjt1qx3c6ELajKC A  # Nyhrox | #33 | 149W/148L | +161.10 SOL
+EjtQrPTbcMevStBkpnjsH23NfUCMhGHusTYsHuGVQZp2 B  # Zef | #34 | 322W/583L | +160.36 SOL
+5T229oePmJGE5Cefys8jE9Jq8C7qfGNNWy3RVA7SmwEP B  # Tuults | #35 | 625W/1108L | +151.02 SOL
+719sfKUjiMThumTt2u39VMGn612BZyCcwbM5Pe8SqFYz B  # Fashr | #36 | 902W/1631L | +134.78 SOL
+FqamE7xrahg7FEWoByrx1o8SeyHt44rpmE6ZQfT7zrve B  # EustazZ | #37 | 879W/1190L | +132.56 SOL
+4yo9CUuTBbds9NFhZd4MzPiZZkUvveXdTnAH8qMsE8ku B  # Gfree | #38 | 361W/508L | +129.94 SOL
+8oQoMhfBQnRspn7QtNAq2aPThRE4q94kLSTwaaFQvRgs A  # big bags bobby | #39 | 87W/99L | +127.66 SOL
+Av3xWHJ5EsoLZag6pr7LKbrGgLRTaykXomDD5kBhL9YQ B  # Heyitsyolo | #40 | 405W/720L | +110.18 SOL
+Ab2baaggUWJMsVUtCvpRjq6iBRDk2Lxr5qzicHueHxM1 A  # leyko | #41 | 236W/348L | +104.36 SOL
+DNsh1UfJdxmze6T6GV9QK5SoFm7HsM5TRNxVuwVgo8Zj A  # Hash | #42 | 51W/223L | +101.07 SOL
+BnfiHRDpHQ5yQevvwnzTmxtaB1Ek276fV5oTY9bi71EA B  # MAMBA | #43 | 704W/1221L | +100.87 SOL
+B9K2wTQcRDLRLhMKFyRh2hPqHrr6VKiCC9yNGpkMUXrh A  # Xanse. | #44 | 85W/271L | +99.16 SOL
+DrJ6SnDXkEsPeGdmSs93v5rwWumv5QMvAGSZjAyWSd5o A  # Iced | #45 | 341W/214L | +94.41 SOL
+FeYVZPsDkmg3D9ddcySxLqGvAR9ES29ABZkeRcUn4FfY A  # AsyncDuck | #46 | 178W/244L | +92.12 SOL
+BTf4A2exGK9BCVDNzy65b9dUzXgMqB4weVkvTMFQsadd B  # Kev | #47 | 876W/1637L | +90.10 SOL
+EeXvxkcGqMDZeTaVeawzxm9mbzZwqDUMmfG3bF7uzumH B  # milito | #48 | 297W/530L | +89.88 SOL
+FAicXNV5FVqtfbpn4Zccs71XcfGeyxBSGbqLDyDJZjke B  # radiance | #49 | 334W/514L | +84.60 SOL
+363sqMFaxZgvCoGzxKjXe1BqMGYkSVoCwmghZUndXuaT A  # nad | #50 | 141W/206L | +82.57 SOL

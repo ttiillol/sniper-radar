@@ -743,3 +743,36 @@ def test_selfcheck_report(monkeypatch):
     r = SC.run()
     assert r["coin"] == "FIONA" and all(v["ok"] for v in r["results"].values())
     assert "OK  Jupiter売却テスト" in SC.text(r)
+
+
+# ------------------------------------------------------------------ KOL benchmark
+def test_kol_list_file_is_valid():
+    import re as _re
+    from desk import flow as F
+    F._kol_cache.update(t=0.0, v={})
+    k = F.load_kols()
+    assert len(k) == 50 and sum(1 for v in k.values() if v["tier"] == "A") == 20
+    b58 = _re.compile(r"^[1-9A-HJ-NP-Za-km-z]{32,44}$")
+    assert all(b58.match(a) for a in k) and k["862TYSvRYoiHAK3F3WwTRYAfuGiQaGdxedN9AGvRGWo2"]["name"] == "Wugi"
+
+
+def test_kol_tiers_weight_the_score():
+    from desk import flow as F
+    kols = {"A1": {"tier": "A", "name": "Wugi"}, "B1": {"tier": "B", "name": "ban"}, "B2": {"tier": "B", "name": "decu"}}
+    base = [_tr(NOW - 10 - i, "buy", 40, f"x{i}") for i in range(10)]
+    s0 = F.score(F.analyze(base, NOW, kols=kols))["score"]
+    f = F.analyze(base + [_tr(NOW - 5, "buy", 300, "A1"), _tr(NOW - 6, "buy", 300, "B1")], NOW, kols=kols)
+    assert f["kol_names"] == ["Wugi", "ban"] and f["kol_a"] == 1
+    v = F.score(f)
+    assert v["score"] == s0 + 14 and "Wugi" in v["reasons"][-1]
+
+
+def test_kol_buys_are_recorded_for_the_benchmark(monkeypatch):
+    from desk import flow as F
+    monkeypatch.setattr(F, "load_kols", lambda: {"K1": {"tier": "A", "name": "xander"}})
+    trades = {"v": [_tr(NOW - 20, "buy", 100, f"b{i}") for i in range(20)] + [_tr(NOW - 30, "buy", 800, "K1")]}
+    d, s, _ = _flow_desk(monkeypatch, trades)
+    d.cycle(NOW)
+    ks = s["kol_seen"]
+    assert ks[-1]["names"] == ["xander"] and ks[-1]["symbol"] == "GOOD" and ks[-1]["a"] == 1
+    assert s["tracking"]["M"]["facts"]["kol_n"] == 1

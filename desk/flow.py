@@ -61,15 +61,27 @@ def pool_trades(pool):
     return out
 
 
+_kol_cache = {"t": 0.0, "v": {}}
+
+
 def load_kols():
-    """desk/kol_wallets.txt (kept in GitHub) + data/kol_wallets.txt (local only). One address per line."""
-    out = set()
+    """{address: {"tier": "A"/"B", "name": str}} from desk/kol_wallets.txt (GitHub) + data/kol_wallets.txt (local).
+    Line format: <address> [A|B]  # name | ..."""
+    if time.time() - _kol_cache["t"] < 600:
+        return _kol_cache["v"]
+    out = {}
     for f in (C.ROOT / "desk" / "kol_wallets.txt", C.DATA / "kol_wallets.txt"):
         try:
-            out |= {x.split("#")[0].strip() for x in f.read_text().splitlines()
-                    if x.split("#")[0].strip()}
+            for line in f.read_text().splitlines():
+                body, _, note = line.partition("#")
+                parts = body.split()
+                if not parts:
+                    continue
+                out[parts[0]] = {"tier": (parts[1] if len(parts) > 1 else "A").upper(),
+                                 "name": (note.split("|")[0].strip() or parts[0][:6])}
         except FileNotFoundError:
             pass
+    _kol_cache.update(t=time.time(), v=out)
     return out
 
 
@@ -89,7 +101,9 @@ def analyze(trades, now=None, creator=None, kols=None, window_min=None):
         usd = sum(y["usd"] for y in grp)
         if usd > burst_usd:
             burst_usd, burst_w = usd, len({y["wallet"] for y in grp})
-    kols = kols or set()
+    kols = kols or {}
+    if not isinstance(kols, dict):
+        kols = {k: {"tier": "A", "name": k[:6]} for k in kols}
     return {
         "window_min": round(win / 60), "buys": len(buys), "sells": len(sells),
         "buy_usd": round(bu), "sell_usd": round(su),
@@ -99,6 +113,8 @@ def analyze(trades, now=None, creator=None, kols=None, window_min=None):
         "whale_usd": round(sum(x["usd"] for x in whales)),
         "burst_usd": round(burst_usd), "burst_wallets": burst_w,
         "kol_buys": sorted({x["wallet"] for x in buys if x["wallet"] in kols}),
+        "kol_names": sorted({kols[x["wallet"]]["name"] for x in buys if x["wallet"] in kols}),
+        "kol_a": len({x["wallet"] for x in buys if kols.get(x["wallet"], {}).get("tier") == "A"}),
         "dev_sold_usd": round(sum(x["usd"] for x in trades if creator and x["wallet"] == creator
                                   and x["kind"] == "sell")),
     }
@@ -126,7 +142,9 @@ def score(f):
     elif f["buyers"] < 8:
         sc -= 10; why.append(f"買い手が少ない（{f['buyers']}人）")
     if f["kol_buys"]:
-        sc += min(20, 10 * len(f["kol_buys"])); why.append(f"登録した有名人の財布が{len(f['kol_buys'])}つ購入")
+        a = f.get("kol_a", len(f["kol_buys"]))
+        sc += min(20, 10 * a + 4 * (len(f["kol_buys"]) - a))
+        why.append(f"KOL {len(f['kol_buys'])}人が購入（{'・'.join(f.get('kol_names', [])[:3])}）")
     return {"ok": True, "score": max(0, min(100, sc)), "reasons": why}
 
 

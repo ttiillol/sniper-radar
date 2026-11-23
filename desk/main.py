@@ -246,6 +246,12 @@ class Desk:
             fv = F.score(fl)
             if fl:
                 rg["facts"]["flow"] = fl
+                rg["facts"]["kol_n"] = len(fl["kol_buys"])
+                if fl["kol_buys"]:
+                    ks = self.s.setdefault("kol_seen", [])
+                    ks.append({"ts": int(now), "mint": mint, "symbol": sym, "names": fl["kol_names"][:5],
+                               "n": len(fl["kol_buys"]), "a": fl.get("kol_a", 0)})
+                    del ks[:-60]
             if not fv["ok"]:
                 cand["reentry_used"] = True
                 return reject("Flow", fv["reasons"], facts=rg["facts"])

@@ -35,7 +35,7 @@ PROFILES = {
                           "trail": 0.25, "stale_min": None, "max_min": 1440},
 }
 FEATURES = ("holders", "sniper_hold_pct", "bundle_hold_pct", "insider_pct", "top3_pct", "top10_pct",
-            "creator_prev", "creator_dead", "dev_pct", "liq")
+            "creator_prev", "creator_dead", "dev_pct", "liq", "kol_n")
 
 
 def reason_key(text):
@@ -123,7 +123,7 @@ def summarize(outcomes):
                 "avg": round(sum(sims) / len(rows), 4),
                 "big": sum(1 for r in rows if r["max_up"] >= 1.0)}      # doubled at some point
     groups = {"decision": {}, "reason": {}, "liq": {}, "score": {}, "holders": {}, "snipers": {},
-              "creator": {}}
+              "creator": {}, "kol": {}}
     for r in outcomes:
         groups["decision"].setdefault(r["decision"], []).append(r)
         if r["decision"] == "REJECT" and r["reasons"]:
@@ -139,6 +139,8 @@ def summarize(outcomes):
         if f.get("creator_prev") is not None:
             serial = f["creator_prev"] >= 3 and f.get("creator_dead", 0) / max(f["creator_prev"], 1) >= 0.67
             groups["creator"].setdefault("常習犯" if serial else "それ以外", []).append(r)
+        if f.get("kol_n") is not None:
+            groups["kol"].setdefault("KOLが買った" if f["kol_n"] else "KOLは買っていない", []).append(r)
         if r["score"] is not None:
             b = "60以上" if r["score"] >= 60 else "40〜59" if r["score"] >= 40 else "40未満"
             groups["score"].setdefault(b, []).append(r)

@@ -7,6 +7,7 @@ from . import config as C
 from . import portfolio as P
 from . import tracker as T
 from . import journal as J
+from . import flow as F
 
 
 def build(site: Path):
@@ -18,6 +19,13 @@ def build(site: Path):
         decisions = []
     slim = [{k: d.get(k) for k in ("ts", "kind", "mint", "symbol", "action", "reason")} for d in decisions]
     mk = time.strftime("%Y-%m", time.gmtime())
+    try:
+        kols = F.load_kols()
+        kol_count = {"A": sum(1 for v in kols.values() if v["tier"] == "A"), "all": len(kols)}
+    except Exception:
+        kol_count = {"A": 0, "all": 0}
+    kol_seen = [dict(k, status=(s["candidates"].get(k["mint"]) or {}).get("status", "done"))
+                for k in (s.get("kol_seen") or [])[-15:]][::-1]
     try:
         tr = J.trades(s)
         jstats, bvl = J.stats(tr), J.backtest_vs_live(s, tr)
@@ -33,7 +41,7 @@ def build(site: Path):
             1 for c in s["candidates"].values() if c.get("status") == "waiting"),
         "verify": T.summarize(s.get("outcomes", [])), "tracking": len(s.get("tracking", {})),
         "outcomes_n": len(s.get("outcomes", [])),
-        "selfcheck": s.get("selfcheck"), "journal": jstats, "jtrades": jtr, "bvl": bvl, "risk_pct": J.RISK_PCT,
+        "selfcheck": s.get("selfcheck"), "kol_seen": kol_seen, "kol_count": kol_count, "journal": jstats, "jtrades": jtr, "bvl": bvl, "risk_pct": J.RISK_PCT,
         "limits": {"daily": C.DAILY_LOSS_LIMIT, "total": C.TOTAL_LOSS_LIMIT, "max": C.MAX_OPEN_POSITIONS,
                    "start": C.START_CASH},
     }
@@ -109,6 +117,7 @@ a{color:var(--acc);text-decoration:none}h1{font-size:20px;margin:4px 0 2px}.sub{
 </div>
 <div class="card" id="rc"></div>
 <div class="card" id="bvl"></div>
+<div class="card" id="kol"></div>
 <div class="card"><h2>売買の記録 <span class="small">（1分ごとに自動更新）</span></h2><div id="feed"></div></div>
 <div class="card" id="vc"></div>
 <div class="card" id="hc"></div>
@@ -151,7 +160,7 @@ $("#poss").innerHTML=P.length?P.map(([m,p])=>`<div class="row"><b>${(p.symbol||"
   const dec=Object.fromEntries(Object.entries(V.decision||{}).map(([k,v])=>[NMD[k]||k,v]));
   $("#vc").innerHTML=`<h2>検証：もし買っていたら <span class="small">（6時間追跡・6つの売り方（A〜F）を同じ値動きで比較）</span></h2>
   <div class="small">追跡中 ${D.tracking}件 ・ 結果が出た ${D.outcomes_n}件。見送ったコインの成績が良ければ、そのルールは厳しすぎる証拠です。</div>
-  ${D.outcomes_n?tbl("売り方の比較（同じコイン・違う売りルール）",V.profiles)+tbl("判断別",dec)+tbl("見送り理由別",V.reason)+tbl("流動性別",V.liq,["$30k以上","$10k〜30k","$5k〜10k","$5k未満","不明"])+tbl("点数別",V.score,["60以上","40〜59","40未満"])+tbl("保有者数別",V.holders,["75人未満","75〜300人","300人以上"])+tbl("狙撃ボットの保有率別",V.snipers,["5%未満","5〜20%","20%以上"])+tbl("作成者の過去",V.creator):'<div class="small" style="margin-top:8px">まだ結果がありません（審査から4時間後に出始めます）</div>'}`;
+  ${D.outcomes_n?tbl("売り方の比較（同じコイン・違う売りルール）",V.profiles)+tbl("判断別",dec)+tbl("見送り理由別",V.reason)+tbl("流動性別",V.liq,["$30k以上","$10k〜30k","$5k〜10k","$5k未満","不明"])+tbl("点数別",V.score,["60以上","40〜59","40未満"])+tbl("保有者数別",V.holders,["75人未満","75〜300人","300人以上"])+tbl("狙撃ボットの保有率別",V.snipers,["5%未満","5〜20%","20%以上"])+tbl("作成者の過去",V.creator)+tbl("KOLの購入別（ベンチマーク）",V.kol):'<div class="small" style="margin-top:8px">まだ結果がありません（審査から4時間後に出始めます）</div>'}`;
 })();
 (function(){
   const lab=d=>d.action==="BUY"?"BUY":d.action==="SELL"?((d.reason||"").startsWith("損切り")?"STOP":"SELL"):d.action==="REJECT"?"SKIP":null;
@@ -206,6 +215,14 @@ $("#gaps").innerHTML=D.gaps.length?D.gaps.map(g=>`<div class="row">${ago(g.ts)} 
   $("#bvl").innerHTML=`<h2>検証 vs 実際 <span class="small">（バックテストどおりに勝てているか）</span></h2>
   <div class="cmp">${box("検証<br>（買ったコイン）",B.sim_bought)}${box("実際<br>（練習売買）",B.live)}${box("参考<br>（審査した全コイン）",B.sim_all)}</div>
   <div class="small" style="margin-top:8px">検証＝同じコインに売り方Eを当てはめた計算上の成績。${msg}</div>`;
+})();
+(function(){
+  const K=D.kol_count||{},S=D.kol_seen||[],ST={bought:"買った",rejected:"見送り",waiting:"審査中",skipped:"除外",expired:"期限切れ",error:"エラー",done:"判断済み"};
+  $("#kol").innerHTML=`<h2>KOLベンチマーク <span class="small">kolscan月間上位${K.all||0}人（慎重派A ${K.A||0}人）の買いを物差しにする</span></h2>
+  <div class="small">真似して買うためではなく、「プロが買ったコインを、このデスクはどう判断したか」を比べるための欄です。KOLが買うと点数が少し上がります（A +10、B +4、最大+20）。</div>`+
+  (S.length?S.map(k=>`<div class="row" style="display:flex;gap:8px;align-items:center"><b style="flex:1;min-width:0"><a href="https://dexscreener.com/solana/${k.mint}" target="_blank" rel="noopener">${String(k.symbol||"?").replace(/</g,"")}</a>
+   <span class="small"> ${ago(k.ts)} ・ ${k.names.map(n=>String(n).replace(/</g,"")).join("・")}${k.n>k.names.length?" ほか":""}</span></b>
+   <span class="tag ${k.status==="bought"?"BUY":k.status==="rejected"?"REJECT":"WATCH"}">${ST[k.status]||k.status}</span></div>`).join(""):'<div class="small" style="margin-top:8px">まだ、審査したコインをKOLが買った例はありません。</div>');
 })();
 (function(){
   const esc=x=>String(x==null?"":x).replace(/[<>&"]/g,c=>({"<":"&lt;",">":"&gt;","&":"&amp;",'"':"&quot;"}[c]));
