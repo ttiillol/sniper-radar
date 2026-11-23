@@ -121,7 +121,7 @@ a{color:var(--acc);text-decoration:none}h1{font-size:20px;margin:4px 0 2px}.sub{
 <div class="card warn"><h2>注意</h2>
 これは<b>練習（ペーパー）</b>です。本物のお金は動きません。ミームコインは数分で価値がほぼゼロになることがあり、損切りが効かずに大きく負けることがあります。
 この画面の成績が良くても、本番で同じ結果になる保証はありません。<br><br>
-ルール：1回 $5〜10 ／ 売り方E：−30%で損切り／+25%まで上がったら高値から−12%で全部利確（小さな勝ちを確保）／+50%で1/3売って残りは負けなし／+150%で1/3／最後の1/3は高値から−35%まで持つ ／ 最大5件 ／ 1日 −$10 で新規停止 ／ 累計 −$30 で完全停止 ／ 急落で損切りが効かない前提（−50%）で枠を計算</div>
+ルール：1回 $5〜10 ／ 売り方E：−30%で損切り／+25%まで上がったら高値から−12%で全部利確（小さな勝ちを確保）／+50%で1/3売って残りは負けなし／+150%で1/3／最後の1/3は高値から−35%まで持つ ／ 作成者が売ったら即売却 ／ 買う前に売却テスト（売れないコインは買わない）／ 損切り後は大口3人以上が2分で買ったときだけ1回買い直し ／ 最大5件 ／ 1日 −$10 で新規停止 ／ 累計 −$30 で完全停止 ／ 急落で損切りが効かない前提（−50%）で枠を計算</div>
 <script>
 const D=__DATA__;const $=s=>document.querySelector(s);
 const ago=t=>{if(!t)return"-";const m=Math.round((Date.now()/1000-t)/60);return m<60?m+"分前":m<1440?Math.round(m/60)+"時間前":Math.round(m/1440)+"日前"};
@@ -149,7 +149,7 @@ $("#poss").innerHTML=P.length?P.map(([m,p])=>`<div class="row"><b>${(p.symbol||"
     <span class="small">${v.n}件</span><span class="small" style="width:70px;text-align:right">勝率 ${pct(v.win)}</span><b class="${v.avg>0?"pos":"neg"}" style="width:62px;text-align:right">${v.avg>0?"+":""}${pct(v.avg)}</b></div>`).join("")+"</div>"};
   const NMD={BUY:"買った",REJECT:"見送った",WATCH:"様子見した"};
   const dec=Object.fromEntries(Object.entries(V.decision||{}).map(([k,v])=>[NMD[k]||k,v]));
-  $("#vc").innerHTML=`<h2>検証：もし買っていたら <span class="small">（6時間追跡・4つの売り方を同じ値動きで比較）</span></h2>
+  $("#vc").innerHTML=`<h2>検証：もし買っていたら <span class="small">（6時間追跡・6つの売り方（A〜F）を同じ値動きで比較）</span></h2>
   <div class="small">追跡中 ${D.tracking}件 ・ 結果が出た ${D.outcomes_n}件。見送ったコインの成績が良ければ、そのルールは厳しすぎる証拠です。</div>
   ${D.outcomes_n?tbl("売り方の比較（同じコイン・違う売りルール）",V.profiles)+tbl("判断別",dec)+tbl("見送り理由別",V.reason)+tbl("流動性別",V.liq,["$30k以上","$10k〜30k","$5k〜10k","$5k未満","不明"])+tbl("点数別",V.score,["60以上","40〜59","40未満"])+tbl("保有者数別",V.holders,["75人未満","75〜300人","300人以上"])+tbl("狙撃ボットの保有率別",V.snipers,["5%未満","5〜20%","20%以上"])+tbl("作成者の過去",V.creator):'<div class="small" style="margin-top:8px">まだ結果がありません（審査から4時間後に出始めます）</div>'}`;
 })();

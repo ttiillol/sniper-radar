@@ -75,3 +75,15 @@ import os
 TICK_SEC = float(os.environ.get("DESK_TICK") or 45)   # live server: 10
 GAP_WARN_SEC = 120
 MAX_EVALS_PER_CYCLE = 3             # full (credit-using) evaluations per cycle                  # a pause longer than this is logged as a gap
+
+# --- order-flow agents (from the 12-agent Grok desk idea, free data: GeckoTerminal + Jupiter quote)
+FLOW_ON = True
+FLOW_WINDOW_MIN = 10                # look at the last 10 minutes of trades
+WHALE_BUY_USD = 500                 # a single buy this big counts as a whale (pools are only $10k-100k)
+FLOW_WEIGHT = 0.4                   # flow score moves the entry score by up to +-20 points
+TRENDING_BONUS = 5                  # coin is trending on GeckoTerminal right now
+MAX_SELL_IMPACT = 0.05              # sell simulation: selling our size must move price < 5%
+DEV_CHECK_SEC = 60                  # while holding: check every minute whether the creator sold
+REENTRY_WAIT_SEC = 120              # after a stop-loss, look at the coin once more after 2 minutes...
+REENTRY_MIN_WHALES = 3              # ...and only re-buy if 3+ different whales bought within 2 minutes
+TRENDING_EVERY_SEC = 300

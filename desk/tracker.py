@@ -30,6 +30,9 @@ PROFILES = {
     "D_守り(+50%後は負けなし)": {"sl": -0.30, "tps": [(0.5, 1 / 3), (1.5, 1 / 3)], "be": 0.02, "arm": 1.5,
                               "trail": 0.35, "stale_min": 90, "max_min": 1440},
     "E_ハイブリッド(採用中)": C.EXIT_PROFILE,
+    # from the 12-agent Grok desk post: TP ladder at 2x and 3x, -12% stop, 25% trail
+    "F_2倍3倍利確(-12%)": {"sl": -0.12, "tps": [(1.0, 1 / 3), (2.0, 1 / 3)], "be": None, "arm": 0.25,
+                          "trail": 0.25, "stale_min": None, "max_min": 1440},
 }
 FEATURES = ("holders", "sniper_hold_pct", "bundle_hold_pct", "insider_pct", "top3_pct", "top10_pct",
             "creator_prev", "creator_dead", "dev_pct", "liq")

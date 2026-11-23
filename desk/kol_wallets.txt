@@ -1,0 +1,3 @@
+# KOL WATCH: Solana wallet addresses of traders/influencers to follow, one per line.
+# A buy from any of these in the last 10 minutes adds up to +20 to the flow score.
+# Example:  <address>   # name

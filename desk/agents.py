@@ -125,6 +125,7 @@ def rug_check(mint, pair, state, radar, now=None, rpc=None, rc=None, gp=None, ho
         fails.append("データ不足: RugCheckが応答しない")
     else:
         creator = rc.get("creator")
+        facts["creator"] = creator
         dev_pct = None
         if creator and supply:
             bal = rc.get("creatorBalance")

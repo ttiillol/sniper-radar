@@ -22,6 +22,7 @@ def tmp_data(tmp_path, monkeypatch):
     monkeypatch.setattr(C, "DB_FILE", tmp_path / "d.sqlite")
     monkeypatch.setattr(C, "KILL_FILE", tmp_path / "KILL")
     monkeypatch.setattr(C, "LIVE_FILE", tmp_path / "live.json")
+    monkeypatch.setattr(C, "FLOW_ON", False)           # no network in tests; flow tests turn it on with fakes
     P._db = None
     yield
     P._db = None
@@ -578,3 +579,110 @@ def test_desk_page_builds_with_journal(tmp_path):
     page.build(tmp_path)
     html = (tmp_path / "desk.html").read_text()
     assert "成績（R倍数）" in html and '"journal":{"n":1' in html and "検証 vs 実際" in html
+
+
+# ------------------------------------------------------------------ order-flow agents (12-agent desk ideas)
+def _tr(t, kind, usd, wallet):
+    return {"t": t, "kind": kind, "usd": usd, "wallet": wallet}
+
+
+def test_flow_numbers_and_score():
+    from desk import flow as F
+    now = NOW
+    tr = [_tr(now - 30, "buy", 12_000, "W1"), _tr(now - 50, "buy", 15_000, "W2"), _tr(now - 80, "buy", 14_000, "W3")]
+    tr += [_tr(now - 100 - i, "buy", 50, f"b{i}") for i in range(35)] + [_tr(now - 200, "sell", 400, "s1")]
+    tr += [_tr(now - 3600, "buy", 9_999, "OLD")]                      # outside the 10-minute window
+    f = F.analyze(tr, now, creator="DEV", kols={"b3"})
+    assert f["burst_wallets"] == 3 and f["burst_usd"] == 41_000      # "three whales, $41k in 2 minutes"
+    assert f["buyers"] == 38 and f["kol_buys"] == ["b3"] and f["dev_sold_usd"] == 0
+    v = F.score(f)
+    assert v["ok"] and v["score"] >= 90
+    dev = F.score(F.analyze(tr + [_tr(now - 10, "sell", 300, "DEV")], now, creator="DEV"))
+    assert not dev["ok"] and "作成者が売っている" in dev["reasons"][0]
+    assert F.score(None)["ok"] and F.score(None)["score"] == 50       # no data -> neutral, never blocks
+
+
+def _flow_desk(monkeypatch, trades, sell=None):
+    from desk import notify as N
+    monkeypatch.setattr(C, "FLOW_ON", True)
+    monkeypatch.setattr(N, "send_async", lambda *a, **k: None)
+    monkeypatch.setattr(M, "credits_ok", lambda st: True)
+    monkeypatch.setattr(M, "load_radar", lambda: {"bots": set(), "tokens": {}})
+    s = P.new_state()
+    s["candidates"]["M"] = {"seen": NOW - 1800, "grad": None, "symbol": "GOOD", "status": "waiting", "checks": 0}
+    prices = {"p": 0.001}
+    mk = lambda: dict(pair(price=prices["p"]), pairAddress="POOL")
+    d = M.Desk(state=s, fetch_pairs=lambda ms: {m: mk() for m in ms},
+               rug=lambda mint, p, st, radar, now: A.rug_check(mint, p, st, radar, now=NOW, rpc=lambda *a: None,
+                                                               **good_rug_inputs()),
+               trades=lambda pool: trades["v"], sell_check=sell or (lambda m, usd: {"ok": True, "reason": "ok"}))
+    return d, s, prices
+
+
+def test_dev_selling_coin_is_rejected(monkeypatch):
+    trades = {"v": [_tr(NOW - 20, "sell", 500, "DEV")]}
+    d, s, _ = _flow_desk(monkeypatch, trades)
+    assert d.evaluate("M", dict(pair(), pairAddress="POOL"), {"bots": set(), "tokens": {}}, NOW) == "rejected"
+    assert not s["positions"]
+
+
+def test_failed_sell_simulation_blocks_buy(monkeypatch):
+    trades = {"v": [_tr(NOW - 20, "buy", 100, f"b{i}") for i in range(20)]}
+    d, s, _ = _flow_desk(monkeypatch, trades, sell=lambda m, usd: {"ok": False, "reason": "売却テスト失敗: 売る経路がない"})
+    d.cycle(NOW)
+    assert not s["positions"] and s["candidates"]["M"]["status"] == "rejected"
+
+
+def test_dev_sell_while_holding_exits_at_once(monkeypatch):
+    trades = {"v": [_tr(NOW - 20, "buy", 100, f"b{i}") for i in range(20)]}
+    d, s, _ = _flow_desk(monkeypatch, trades)
+    d.cycle(NOW)
+    assert "M" in s["positions"] and s["positions"]["M"]["creator"] == "DEV"
+    trades["v"] = trades["v"] + [_tr(NOW + 100, "sell", 2_000, "DEV")]
+    d.cycle(NOW + 120)
+    assert "M" not in s["positions"] and s["candidates"]["M"]["reentry_used"]
+
+
+def test_reentry_only_when_whales_pile_in(monkeypatch):
+    trades = {"v": [_tr(NOW - 20, "buy", 100, f"b{i}") for i in range(20)]}
+    d, s, prices = _flow_desk(monkeypatch, trades)
+    d.cycle(NOW)
+    assert "M" in s["positions"]
+    prices["p"] = 0.0006                                   # -40% -> stop
+    d.cycle(NOW + 60)
+    c = s["candidates"]["M"]
+    assert "M" not in s["positions"] and c["status"] == "waiting" and c["reentry"]
+    # 2 minutes later, no whales -> no second answer
+    d.cycle(NOW + 60 + C.REENTRY_WAIT_SEC)
+    assert "M" not in s["positions"] and c["status"] == "rejected"
+    # a fresh coin state where three whales bought within 2 minutes -> re-buy
+    c.update(status="waiting", next_check=0)
+    t = NOW + 400
+    trades["v"] = [_tr(t - 10, "buy", 13_000, "A"), _tr(t - 40, "buy", 14_000, "B"), _tr(t - 70, "buy", 14_000, "C")] + \
+                  [_tr(t - 90 - i, "buy", 60, f"n{i}") for i in range(20)]
+    d.cycle(t)
+    assert "M" in s["positions"] and s["stats"]["bought"] == 2
+
+
+def test_profile_f_from_the_post_is_compared():
+    from desk import tracker as T
+    f = T.PROFILES["F_2倍3倍利確(-12%)"]
+    path = [[0, 1.0], [60, 0.87]]                           # -13% -> the -12% stop
+    assert T.simulate_profile(path, f) < -0.12
+    path = [[0, 1.0], [60, 2.05], [120, 3.1], [180, 2.2]]   # 2x and 3x ladders, then a 25%+ trail
+    assert T.simulate_profile(path, f) > 1.0
+
+
+def test_low_score_coin_is_rejected_not_an_error(monkeypatch):
+    """Regression: 'score' was passed twice, so every low-score reject crashed and was counted as an error."""
+    from desk import notify as N
+    monkeypatch.setattr(N, "send_async", lambda *a, **k: None)
+    s = P.new_state()
+    s["candidates"]["M"] = {"seen": NOW - 1800, "grad": None, "symbol": "MEH", "status": "waiting", "checks": 9}
+    weak = pair(m5=-3, h1=-10, buys=5, sells=20, h1tx=40, sym="MEH")
+    d = M.Desk(state=s, fetch_pairs=lambda ms: {m: weak for m in ms},
+               rug=lambda mint, p, st, radar, now: rug(p=p, state=st))
+    monkeypatch.setattr(M, "credits_ok", lambda st: True)
+    monkeypatch.setattr(M, "load_radar", lambda: {"bots": set(), "tokens": {}})
+    d.cycle(NOW)
+    assert s["candidates"]["M"]["status"] == "rejected" and s["stats"].get("errors", 0) == 0

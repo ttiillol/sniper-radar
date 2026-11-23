@@ -22,6 +22,7 @@ from . import tracker as T
 from . import notify as N
 from . import live as L
 from . import journal as J
+from . import flow as F
 import scanner
 
 
@@ -55,15 +56,20 @@ def credits_ok(state):
     return radar_used + state["credits"].get(mk, 0) + scanner.CALLS["n"] < scanner.MONTHLY_BUDGET
 
 
-STAGE_JA = {"Rug": "安全チェック", "Sniper": "点数", "Risk": "資金ルール"}
+STAGE_JA = {"Rug": "安全チェック", "Sniper": "点数", "Risk": "資金ルール", "Flow": "取引の流れ",
+            "Sell": "売却テスト", "Reentry": "再エントリー"}
 
 
 class Desk:
-    def __init__(self, state=None, fetch_pairs=S.dex_pairs, rug=A.rug_check):
+    def __init__(self, state=None, fetch_pairs=S.dex_pairs, rug=A.rug_check,
+                 trades=F.pool_trades, sell_check=F.sell_check):
         self.s = state or P.load_state()
         self.scanner = A.Scanner()
         self.fetch_pairs = fetch_pairs
         self.rug = rug
+        self.trades = trades
+        self.sell_check = sell_check
+        self._dev_checked = {}
         self._calls0 = scanner.CALLS["n"]
 
     # ------------------------------------------------ restart / gap handling
@@ -90,6 +96,38 @@ class Desk:
                 self._exit_one(mint, pairs, now)
             except Exception as e:
                 self._error("exit", mint, e)
+        for mint in list(self.s["positions"]):
+            try:
+                self._dev_watch(mint, now)
+            except Exception as e:
+                self._error("dev_watch", mint, e)
+
+    def _dev_watch(self, mint, now):
+        """STOP GUARD extra: if the creator sells after we bought, get out at once."""
+        pos = self.s["positions"][mint]
+        if not (C.FLOW_ON and pos.get("creator") and pos.get("pool")):
+            return
+        if now - self._dev_checked.get(mint, 0) < C.DEV_CHECK_SEC:
+            return
+        self._dev_checked[mint] = now
+        tr = self.trades(pos["pool"])
+        if not tr:
+            return
+        sold = sum(x["usd"] for x in tr if x["kind"] == "sell" and x["wallet"] == pos["creator"]
+                   and x["t"] >= pos["opened"])
+        if sold <= 0:
+            return
+        price = pos.get("last_price") or pos["entry"]
+        why = f"作成者が売った（${sold:,.0f}）→ 全部売却"
+        pnl = P.paper_sell(self.s, mint, 1.0, price, why, now)
+        P.log_decision("exit", mint, pos["symbol"], "SELL", why, fraction=1.0,
+                       change_pct=round((price / pos["entry"] - 1) * 100, 2), pnl=round(pnl, 2))
+        c = self.s["candidates"].get(mint)
+        if c:
+            c["reentry_used"] = True                 # never re-enter a coin whose dev dumped
+        L.step("stop", f"練習売り 100% ・ {pnl:+.2f}ドル ・ {why}", pos["symbol"], mint, "STOP")
+        N.send_async(f"STOP {pos['symbol']}  {pnl:+.2f}ドル", f"{why}\n残高 ${self.s['cash']:.2f}（練習）",
+                     click=f"https://dexscreener.com/solana/{mint}")
 
     def _exit_one(self, mint, pairs, now):
         if True:
@@ -110,6 +148,11 @@ class Desk:
                 P.log_decision("exit", mint, pos["symbol"], "SELL", why, fraction=frac,
                                change_pct=round(chg * 100, 2), pnl=round(pnl, 2))
                 stop = why.startswith("損切り")
+                c = self.s["candidates"].get(mint)
+                if stop and mint not in self.s["positions"] and c and not c.get("reentry_used"):
+                    # same coin, second answer if the facts change (whales pile in after our stop)
+                    c.update(status="waiting", next_check=now + C.REENTRY_WAIT_SEC, reentry_used=True,
+                             reentry=True)
                 L.step("stop" if stop else "sell", f"練習売り {frac * 100:.0f}% ・ {pnl:+.2f}ドル ・ {why}",
                        pos["symbol"], mint, "STOP" if stop else "SELL")
                 N.send_async(f"{'STOP' if stop else 'SELL'} {pos['symbol']}  {pnl:+.2f}ドル",
@@ -194,10 +237,30 @@ class Desk:
             self.s["seen_symbols"][u] = {"mint": mint, "t": int(cand.get("grad") or now)}
         if not rg["ok"]:
             return reject("Rug", rg["reasons"], facts=rg.get("facts"), notes=rg.get("notes"))
-        L.step("work", "安全チェック合格 → 勢い・大口・話題性から点数を計算中…", sym, mint)
+        fl, fv = None, F.score(None)
+        if C.FLOW_ON:
+            L.step("work", "安全チェック合格 → 直近10分の取引を確認中（大口の買い・買い手の数・作成者の売り）…", sym, mint)
+            tr = self.trades((pair or {}).get("pairAddress"))
+            fl = F.analyze(tr, now, rg["facts"].get("creator"), F.load_kols()) if tr else None
+            fv = F.score(fl)
+            if fl:
+                rg["facts"]["flow"] = fl
+            if not fv["ok"]:
+                cand["reentry_used"] = True
+                return reject("Flow", fv["reasons"], facts=rg["facts"])
+        if cand.get("reentry"):
+            if not fl or fl["burst_wallets"] < C.REENTRY_MIN_WHALES:
+                return reject("Reentry", [f"損切り後の再エントリー条件（大口{C.REENTRY_MIN_WHALES}人以上が2分で買う）を満たさず"],
+                              facts=rg["facts"])
+        L.step("work", "勢い・大口・話題性・取引の流れから点数を計算中…", sym, mint)
         sn, wh, hy = A.sniper(pair), A.whale(rg["facts"], cand), A.hype(pair)
-        score = A.entry_score(sn, wh, hy)
-        why = {"sniper": sn["reasons"], "whale": wh["reasons"], "hype": hy["reasons"], "score": score}
+        score = A.entry_score(sn, wh, hy) + round((fv["score"] - 50) * C.FLOW_WEIGHT)
+        if cand.get("trending"):
+            score += C.TRENDING_BONUS
+            hy["reasons"].append(f"GeckoTerminalで注目{cand['trending']}位")
+        why = {"sniper": sn["reasons"], "whale": wh["reasons"], "hype": hy["reasons"], "flow": fv["reasons"],
+               "score": score}
+        why_x = {k: v for k, v in why.items() if k != "score"}      # score is passed on its own
         if not sn["ok"] or score < C.MIN_ENTRY_SCORE:
             if cand["checks"] < 4 and sn["ok"] and score >= 40:
                 cand["next_check"] = now + 300      # look again in 5 minutes
@@ -207,14 +270,24 @@ class Desk:
                 L.step("watch", f"点数{score}（合格は{C.MIN_ENTRY_SCORE}点）— 5分後にもう一度見る", sym, mint, "WATCH")
                 return "watch"
             return reject("Sniper", sn["reasons"] if not sn["ok"] else [f"点数{score}（{C.MIN_ENTRY_SCORE}未満）"],
-                          score=score, facts=rg["facts"], **why)
+                          score=score, facts=rg["facts"], **why_x)
         rk = A.risk(self.s, pair, now)
         if not rk["ok"]:
-            return reject("Risk", rk["reasons"], score=score, facts=rg["facts"], **why)
+            return reject("Risk", rk["reasons"], score=score, facts=rg["facts"], **why_x)
+        L.step("work", "売却テスト中（本当に売れるか見積もりを取る・注文は出さない）…", sym, mint)
+        sc = self.sell_check(mint, rk["size"]) if C.FLOW_ON else {"ok": None, "reason": "売却テスト: オフ"}
+        if sc["ok"] is False:
+            return reject("Sell", [sc["reason"]], score=score, facts=rg["facts"], **why_x)
+        why["sell"] = sc["reason"]
         price = S.pair_price(pair)
         fill, slip = P.paper_buy(self.s, mint, sym, rk["size"], price, rg["facts"]["liq"],
                                  f"点数{score}", now)
         cand["status"] = "bought"
+        cand.pop("reentry", None)
+        pos = self.s["positions"].get(mint)
+        if pos is not None:
+            pos["creator"] = rg["facts"].get("creator")
+            pos["pool"] = (pair or {}).get("pairAddress")
         T.start(self.s, mint, sym, price, rg["facts"]["liq"], "BUY", [], score, now, facts=rg["facts"])
         f = rg["facts"]
         N.send_async(f"BUY {sym}  ${rk['size']:.2f}",
@@ -370,11 +443,31 @@ async def run_loop(minutes):
         except Exception as e:
             desk._error("day_report", "", e)
 
+    def scout():
+        n = 0
+        for t in F.trending_mints():
+            c = desk.s["candidates"].get(t["mint"])
+            if c is not None:
+                c["trending"] = t["rank"]
+            elif t["mint"] not in desk.s["positions"]:
+                desk.s["candidates"][t["mint"]] = {"seen": int(time.time()), "grad": None, "symbol": t["symbol"],
+                                                   "status": "waiting", "checks": 0, "trending": t["rank"]}
+                n += 1
+        if n:
+            L.step("new", f"GeckoTerminalの注目ランキングから{n}件を審査待ちに追加")
+
     async def ticker():
         last_fill = time.time()
         last_sum = time.time()
+        last_scout = 0
         while time.time() < until:
             day_report()
+            if C.FLOW_ON and time.time() - last_scout > C.TRENDING_EVERY_SEC:
+                last_scout = time.time()
+                try:
+                    await asyncio.to_thread(scout)
+                except Exception as e:
+                    desk._error("trending", "", e)
             if time.time() - last_sum > 1800:
                 last_sum = time.time()
                 N.send_async("30分ごとの状況（練習）", desk.summary_text(), tags=["bar_chart"], click=dash())
