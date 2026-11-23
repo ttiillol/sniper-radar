@@ -7,7 +7,7 @@ git fetch -q origin 2>/dev/null && git checkout -q origin/main -- scanner.py bui
 ./.venv/bin/pip install -q -r requirements.txt 2>/dev/null
 ./.venv/bin/python -m pytest -q tests >/dev/null 2>&1 || { echo "tests failed - not starting"; sleep 600; exit 1; }
 
-export DESK_TICK=10
+export DESK_TICK=3            # scalp: check prices / exits every 3 seconds
 export NTFY_TOPIC="sniper-radar-3c6fb034fa4b"   # phone feed: https://ntfy.sh/sniper-radar-3c6fb034fa4b
 mkdir -p site bin
 rm -f data/dashboard_url.txt          # old tunnel address is dead after a restart

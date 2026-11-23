@@ -217,7 +217,7 @@ def rug_check(mint, pair, state, radar, now=None, rpc=None, rc=None, gp=None, ho
 
 
 # ============================================================ 4b. Momentum (scalp gate)
-def momentum(pair, flow=None):
+def momentum(pair, flow=None, pre=False):
     """MOMENTUM agent for the scalp strategy. ok=False means 'not now' (look again shortly),
     not 'bad coin'. Uses DexScreener price changes/volume + the last-10-minute order flow."""
     pc = pair.get("priceChange") or {}
@@ -234,6 +234,8 @@ def momentum(pair, flow=None):
         return V(False, 0, [f"1時間の流れが下向き（{h1:+.1f}%）"])
     if vol5 and vol5 < C.SCALP_MIN_VOL_M5:
         return V(False, 0, [f"5分の売買額が少ない（${vol5:,.0f}）"])
+    if pre:                                        # free pre-check from DexScreener data only
+        return V(True, 50, [f"5分 +{m5:.1f}%"])
     p = (flow or {}).get("pressure")
     if p is not None and p < C.SCALP_MIN_PRESSURE:
         return V(False, 0, [f"買いの勢いが足りない（買い{p * 100:.0f}%）"])

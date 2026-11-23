@@ -688,7 +688,7 @@ def test_profile_f_from_the_post_is_compared():
     assert T.simulate_profile(path, f) > 1.0
 
 
-def test_low_score_coin_is_rejected_not_an_error(monkeypatch):
+def test_low_score_coin_is_rejected_not_an_error(monkeypatch, sniper):
     """Regression: 'score' was passed twice, so every low-score reject crashed and was counted as an error."""
     from desk import notify as N
     monkeypatch.setattr(N, "send_async", lambda *a, **k: None)
@@ -954,3 +954,16 @@ def test_scalp_candidates_expire_when_they_stop_trending():
     s["candidates"]["M"] = {"seen": NOW - 3 * 3600, "grad": NOW - 30 * 86400, "symbol": "OLD", "status": "waiting", "checks": 0}
     s["candidates"]["N"] = {"seen": NOW - 3 * 3600, "refreshed": NOW - 60, "grad": None, "symbol": "HOT", "status": "waiting", "checks": 0}
     assert A.Scanner().due(s, NOW) == ["N"] and s["candidates"]["M"]["status"] == "expired"
+
+
+def test_scalp_free_precheck_skips_expensive_checks(monkeypatch):
+    calls = []
+    d, s, st, _ = _scalp_desk(monkeypatch, rug_calls=calls)
+    st["pair"] = dict(st["pair"], priceChange={"m5": -2, "h1": -8})
+    for i in range(3):
+        d.cycle(NOW + i * C.SCALP_RECHECK_SEC)
+    c = s["candidates"]["M"]
+    assert calls == [] and c["pre_checks"] == 3 and c["checks"] == 0 and s["stats"]["evaluated"] == 0
+    st["pair"] = dict(st["pair"], priceChange={"m5": 2.5, "h1": 30})
+    d.cycle(NOW + 3 * C.SCALP_RECHECK_SEC)
+    assert "M" in s["positions"] and len(calls) == 1

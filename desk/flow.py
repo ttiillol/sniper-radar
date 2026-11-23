@@ -32,7 +32,7 @@ def _gt(path):
     if wait > 0:
         time.sleep(wait)
     _last_call["t"] = time.time()
-    return S.get_json(GT + path, timeout=12, retries=1)
+    return S.get_json(GT + path, timeout=12, retries=2)
 
 
 def _ts(x):

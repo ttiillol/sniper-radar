@@ -73,6 +73,7 @@ class Desk:
         self.sell_check = sell_check
         self._dev_checked = {}
         self._jcache = (0.0, {"n": 0})
+        self._last_refine = 0.0
         self._calls0 = scanner.CALLS["n"]
 
     # ------------------------------------------------ restart / gap handling
@@ -230,6 +231,22 @@ class Desk:
                 return "wait"
         sym = ((pair or {}).get("baseToken") or {}).get("symbol", cand.get("symbol", ""))
         cand["symbol"] = sym
+        if C.STRATEGY == "scalp":
+            # free momentum pre-check first: the expensive safety checks only run on coins that are moving
+            pre = A.momentum(pair, pre=True)
+            if not pre["ok"]:
+                cand["checks"] -= 1                          # a free pre-check is not a real evaluation
+                cand["pre_checks"] = cand.get("pre_checks", 0) + 1
+                self.s["stats"]["evaluated"] -= 1           # not a real evaluation
+                if cand["pre_checks"] <= C.SCALP_MAX_CHECKS:
+                    cand["next_check"] = now + C.SCALP_RECHECK_SEC
+                    L.step("wait", f"勢い待ち: {pre['reasons'][0]}", sym, mint, "WAIT", log=False,
+                           agent="trend", note=f"{sym} {pre['reasons'][0][:30]}")
+                    return "wait"
+                cand["status"] = "rejected"
+                L.step("reject", f"見送り（勢い）: {pre['reasons'][0]}", sym, mint, "REJECT", agent="trend",
+                       note=f"{sym} 勢いが出ないので見送り")
+                return "skipped"
 
         liq0 = ((pair or {}).get("liquidity") or {}).get("usd")
         price0 = S.pair_price(pair) if pair else None
@@ -307,7 +324,7 @@ class Desk:
                 if cand["checks"] < C.SCALP_MAX_CHECKS:
                     cand["next_check"] = now + C.SCALP_RECHECK_SEC
                     L.step("wait", f"勢い待ち: {mom['reasons'][0]} — {C.SCALP_RECHECK_SEC}秒後にもう一度", sym, mint, "WAIT",
-                           agent="trend", note=f"{sym} {mom['reasons'][0][:30]}")
+                           log=False, agent="trend", note=f"{sym} {mom['reasons'][0][:30]}")
                     return "watch"
                 return reject("Momentum", mom["reasons"], facts=rg["facts"])
             L.note("trend", f"{sym} 勢いあり（{'・'.join(mom['reasons'][:2])}）", sym, "OK")
@@ -420,9 +437,10 @@ class Desk:
             pairs = self.fetch_pairs(want)
             prices = {m: S.pair_price(pairs.get(m)) if pairs.get(m) else None for m in want}
         T.update(self.s, prices, now)
-        if C.FLOW_ON:
+        if C.FLOW_ON and now - self._last_refine >= C.REFINE_EVERY_SEC:
+            self._last_refine = now
             try:
-                T.refine(self.s, F.ohlcv, limit=2, now=now)      # 1-minute candles for finished coins
+                T.refine(self.s, F.ohlcv, limit=1, now=now)      # 1-minute candles for finished coins
             except Exception as e:
                 self._error("refine", "", e)
 
