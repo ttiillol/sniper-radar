@@ -8,6 +8,7 @@ STATE_FILE = DESK / "state.json"
 DECISIONS_LOG = DESK / "decisions.jsonl"
 DB_FILE = DESK / "desk.sqlite"
 KILL_FILE = DATA / "KILL"
+LIVE_FILE = ROOT / "site" / "live.json"   # "now doing" feed for the phone page (display only)
 
 TZ = "Pacific/Honolulu"            # day boundary for the daily loss limit
 

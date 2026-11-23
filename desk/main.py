@@ -20,6 +20,7 @@ from . import portfolio as P
 from . import sources as S
 from . import tracker as T
 from . import notify as N
+from . import live as L
 import scanner
 
 
@@ -53,6 +54,9 @@ def credits_ok(state):
     return radar_used + state["credits"].get(mk, 0) + scanner.CALLS["n"] < scanner.MONTHLY_BUDGET
 
 
+STAGE_JA = {"Rug": "安全チェック", "Sniper": "点数", "Risk": "資金ルール"}
+
+
 class Desk:
     def __init__(self, state=None, fetch_pairs=S.dex_pairs, rug=A.rug_check):
         self.s = state or P.load_state()
@@ -78,6 +82,7 @@ class Desk:
         now = now or time.time()
         if not self.s["positions"]:
             return
+        L.step("👀", f"保有中 {len(self.s['positions'])}件の値段を確認（損切り・利確のタイミングか判定）", log=False)
         pairs = self.fetch_pairs(list(self.s["positions"]))
         for mint in list(self.s["positions"]):
             try:
@@ -92,6 +97,7 @@ class Desk:
             price = S.pair_price(pair) if pair else None
             if not price:
                 P.log_decision("exit", mint, pos["symbol"], "NO_PRICE", "価格を取得できず — 次の確認で再試行")
+                L.step("⚠️", "値段が取れず — 次の確認でもう一度", pos["symbol"], mint, "NO_PRICE")
                 return
             liq = (pair.get("liquidity") or {}).get("usd")
             pos["liq"] = liq or pos.get("liq")
@@ -103,10 +109,15 @@ class Desk:
                 P.log_decision("exit", mint, pos["symbol"], "SELL", why, fraction=frac,
                                change_pct=round(chg * 100, 2), pnl=round(pnl, 2))
                 stop = why.startswith("損切り")
+                L.step("🔴" if stop else "🔵", f"練習売り {frac * 100:.0f}% ・ {pnl:+.2f}ドル ・ {why}",
+                       pos["symbol"], mint, "STOP" if stop else "SELL")
                 N.send_async(f"{'🔴 STOP' if stop else '🔵 SELL'} {pos['symbol']}  {pnl:+.2f}ドル",
                              f"{why}\n残高 ${self.s['cash']:.2f} ・ 今日 {P.day_pnl(self.s, now):+.2f}ドル（練習）",
                              tags=["red_circle" if stop else "large_blue_circle"],
                              click=f"https://dexscreener.com/solana/{mint}")
+            else:
+                L.step("✋", f"買値から {(price / pos['entry'] - 1) * 100:+.1f}% — まだ持つ",
+                       pos["symbol"], mint, "HOLD", log=False)
 
     def _error(self, where, mint, e):
         import traceback
@@ -114,6 +125,7 @@ class Desk:
         st["errors"] = st.get("errors", 0) + 1
         msg = f"{type(e).__name__}: {str(e)[:120]}"
         P.log_decision("error", mint, "", "ERROR", f"[{where}] {msg}")
+        L.step("⚠️", f"エラー（{where}）— 止まらずに次へ進みます: {msg[:60]}", "", mint, "ERROR")
         print("ERROR", where, mint, msg, flush=True)
         traceback.print_exc()
 
@@ -139,6 +151,7 @@ class Desk:
             st = self.s["stats"].setdefault("prefiltered", {})
             key = re.sub(r"\$?\d[\d,\.]*", "N", bad.split("（")[0])
             st[key] = st.get(key, 0) + 1
+            L.step("🚫", f"下見で除外: {bad}", ((pair or {}).get("baseToken") or {}).get("symbol", ""), mint, "SKIP")
             return "skipped"
         cand = self.s["candidates"].setdefault(mint, {"seen": int(now), "grad": None, "symbol": "",
                                                       "status": "waiting", "checks": 0})
@@ -148,6 +161,8 @@ class Desk:
             cand["grad"] = pair["pairCreatedAt"] / 1000
             if (now - cand["grad"]) / 60 < C.MIN_AGE_AFTER_GRAD_MIN:
                 cand["next_check"] = cand["grad"] + C.MIN_AGE_AFTER_GRAD_MIN * 60
+                L.step("⏱", f"卒業から{(now - cand['grad']) / 60:.0f}分 — {C.MIN_AGE_AFTER_GRAD_MIN}分たつまで様子見",
+                       ((pair or {}).get("baseToken") or {}).get("symbol", ""), mint, "WAIT")
                 return "wait"
         sym = ((pair or {}).get("baseToken") or {}).get("symbol", cand.get("symbol", ""))
         cand["symbol"] = sym
@@ -161,10 +176,13 @@ class Desk:
             key = re.sub(r"\$?\d[\d,\.]*", "N", reasons[0].split("（")[0]).replace("上位N", "上位10")[:32]
             self.s["stats"]["rejected"][key] = self.s["stats"]["rejected"].get(key, 0) + 1
             P.log_decision("entry", mint, sym, "REJECT", f"[{stage}] " + " / ".join(reasons), **extra)
+            L.step("❌", f"見送り（{STAGE_JA.get(stage, stage)}）: {reasons[0]}", sym, mint, "REJECT")
             return "rejected"
 
         if cand.get("radar") and mint not in radar["tokens"]:
             radar["tokens"][mint] = cand["radar"]   # reuse the expensive early-buyer lookup
+        L.step("🔍", f"審査中: 流動性 ${liq0 or 0:,.0f} ・ 保有者 ・ 狙撃ボット ・ まとめ買い ・ インサイダー ・ ロック状況を確認…",
+               sym, mint)
         rg = self.rug(mint, pair, self.s, radar, now)
         f = rg.get("facts") or {}
         if "block0" in f:
@@ -175,6 +193,7 @@ class Desk:
             self.s["seen_symbols"][u] = {"mint": mint, "t": int(cand.get("grad") or now)}
         if not rg["ok"]:
             return reject("Rug", rg["reasons"], facts=rg.get("facts"), notes=rg.get("notes"))
+        L.step("🧮", "安全チェック合格 → 勢い・大口・話題性から点数を計算中…", sym, mint)
         sn, wh, hy = A.sniper(pair), A.whale(rg["facts"], cand), A.hype(pair)
         score = A.entry_score(sn, wh, hy)
         why = {"sniper": sn["reasons"], "whale": wh["reasons"], "hype": hy["reasons"], "score": score}
@@ -183,6 +202,7 @@ class Desk:
                 cand["next_check"] = now + 300      # look again in 5 minutes
                 T.start(self.s, mint, sym, price0, liq0, "WATCH", [], score, now, facts=rg["facts"])
                 P.log_decision("entry", mint, sym, "WATCH", f"点数{score}（{C.MIN_ENTRY_SCORE}未満）— 5分後にまた確認", **why)
+                L.step("👁", f"点数{score}（合格は{C.MIN_ENTRY_SCORE}点）— 5分後にもう一度見る", sym, mint, "WATCH")
                 return "watch"
             return reject("Sniper", sn["reasons"] if not sn["ok"] else [f"点数{score}（{C.MIN_ENTRY_SCORE}未満）"],
                           score=score, facts=rg["facts"], **why)
@@ -201,6 +221,7 @@ class Desk:
                      tags=["green_circle"], click=f"https://dexscreener.com/solana/{mint}")
         P.log_decision("entry", mint, sym, "BUY", f"点数{score}・{rk['reasons'][0]}", price=fill,
                        facts=rg["facts"], **why)
+        L.step("🟢", f"練習買い ${rk['size']:.2f} ・ 点数{score} ・ 全審査に合格", sym, mint, "BUY")
         return "bought"
 
     def cycle(self, now=None):
@@ -218,6 +239,7 @@ class Desk:
             return "budget"
         due = self.scanner.due(self.s, now)
         if due:
+            L.step("📋", f"審査の順番が来たコイン {len(due)}件 → 1件ずつ調べます", log=False)
             radar = load_radar()
             pairs = self.fetch_pairs(due[:30])
             spent = 0
@@ -233,6 +255,7 @@ class Desk:
                     self._error("evaluate", m, e)
         self.alerts(now)
         self.heartbeat(now)
+        L.idle(f"ひと回り完了 — {C.TICK_SEC:.0f}秒後に次の巡回（新しい卒業コインはずっと受信中）")
         return "ok"
 
     def follow_outcomes(self, now=None):
@@ -241,6 +264,7 @@ class Desk:
         want = T.due(self.s, now)[:60]
         prices = {}
         if want:
+            L.step("📈", f"検証エンジン: 過去に審査した {len(want)}件の今の値段を記録中", log=False)
             pairs = self.fetch_pairs(want)
             prices = {m: S.pair_price(pairs.get(m)) if pairs.get(m) else None for m in want}
         T.update(self.s, prices, now)
@@ -291,6 +315,10 @@ class Desk:
         self.s["rpc"] = scanner.RPC_KIND
         self.s["rpc_samples"] = dict(scanner.ERR_SAMPLES)
         P.save_state(self.s)
+        st = self.s["stats"]
+        L.status(cash=round(self.s["cash"], 2), open=len(self.s["positions"]), evaluated=st.get("evaluated", 0),
+                 bought=st.get("bought", 0), waiting=sum(1 for c in self.s["candidates"].values()
+                                                         if c.get("status") == "waiting"))
 
 
 # ------------------------------------------------------------ runners
@@ -341,6 +369,8 @@ async def run_loop(minutes):
     def on_mig(m):
         desk.s["stats"]["migrations"] = desk.s["stats"].get("migrations", 0) + 1
         desk.scanner.on_migration(desk.s, m)
+        L.step("🎓", "新しい卒業コインを受信 → 審査待ちリストに追加", (m or {}).get("symbol", ""),
+               (m or {}).get("mint", ""), "NEW")
 
     await asyncio.gather(S.listen_migrations(on_mig, until), ticker())
     desk.heartbeat()

@@ -36,7 +36,7 @@ def build(site: Path):
 
 TEMPLATE = r"""<!DOCTYPE html>
 <html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta http-equiv="refresh" content="60">
+<meta http-equiv="refresh" content="120">
 <title>練習売買デスク</title>
 <style>
 :root{--bg:#0f1115;--card:#181b22;--line:#262a33;--tx:#e8eaf0;--mut:#8b91a0;--red:#ff5d5d;--org:#ffa53d;--grn:#3ddc84;--acc:#6aa8ff}
@@ -56,11 +56,34 @@ a{color:var(--acc);text-decoration:none}h1{font-size:20px;margin:4px 0 2px}.sub{
 .lb{font:700 11px ui-monospace,Menlo,monospace;padding:3px 0;width:46px;text-align:center;border-radius:6px;flex:none}
 .L-BUY{background:#0f2e1d;color:var(--grn)}.L-SELL{background:#16263f;color:var(--acc)}.L-STOP{background:#3a1416;color:var(--red)}.L-SKIP{background:#2a2d35;color:var(--mut)}
 .warn{font-size:12.5px;color:var(--mut)}.warn b{color:var(--org)}
+/* live "now doing" card */
+.lv{border-color:#3a1f24}.dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--red);margin-right:6px;animation:pulse 1.2s infinite}
+.dot.off{background:var(--mut);animation:none}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(255,93,93,.7)}70%{box-shadow:0 0 0 9px rgba(255,93,93,0)}100%{box-shadow:0 0 0 0 rgba(255,93,93,0)}}
+.now{background:#11141a;border-radius:12px;padding:12px;margin-bottom:10px}
+.now .t{font-size:15px;font-weight:700;line-height:1.45}.now .i{font-size:22px;margin-right:6px;vertical-align:-3px}
+.sym{display:inline-block;background:#232836;color:var(--acc);border-radius:7px;padding:1px 8px;margin-right:6px;font:700 13px ui-monospace,Menlo,monospace}
+.scan{height:4px;border-radius:4px;background:#1d2130;overflow:hidden;margin-top:10px;position:relative}
+.scan i{position:absolute;top:0;left:-40%;width:40%;height:100%;background:linear-gradient(90deg,transparent,var(--acc),transparent);animation:sweep 1.1s linear infinite}
+.scan.idle i{background:linear-gradient(90deg,transparent,#3b4152,transparent);animation-duration:3s}
+@keyframes sweep{to{left:100%}}
+.ms{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}.ms span{background:#11141a;border-radius:8px;padding:4px 8px;font-size:11.5px;color:var(--mut)}.ms b{color:var(--tx)}
+.lf{display:flex;gap:8px;align-items:flex-start;padding:7px 4px;border-top:1px solid var(--line);font-size:13px;border-radius:6px}
+.lf .ic{width:22px;text-align:center;flex:none}.lf .ag{flex:none;width:44px;text-align:right;font-size:11px;color:var(--mut);padding-top:2px}
+.new{animation:flash 2.2s ease-out}@keyframes flash{0%{background:#23314d;transform:translateY(-6px);opacity:.2}25%{opacity:1;transform:none}100%{background:transparent}}
+.r{font-size:10.5px;font-weight:700;padding:1px 6px;border-radius:99px;margin-left:4px;white-space:nowrap;display:inline-block}
+.r-BUY{background:#0f2e1d;color:var(--grn)}.r-SELL{background:#16263f;color:var(--acc)}.r-STOP,.r-ERROR,.r-NO_PRICE{background:#3a1416;color:var(--red)}
+.r-REJECT,.r-SKIP{background:#2a2d35;color:var(--mut)}.r-WATCH,.r-WAIT{background:#3a2810;color:var(--org)}.r-NEW{background:#26203a;color:#b69cff}
+#lfeed{max-height:430px;overflow-y:auto}
 </style></head><body>
 <div class="nav"><a href="./">🎯 レーダー</a><a class="on" href="desk.html">📈 デスク</a></div>
 <h1>📈 練習売買デスク <span class="small">（ペーパートレード）</span></h1>
 <div class="sub" id="upd"></div>
 <div id="banner"></div>
+<div class="card lv"><h2><span class="dot" id="ldot"></span>いま実行中 <span class="small" id="lage">接続中…</span></h2>
+<div class="now"><div class="t" id="lnow">ライブ情報を待っています…</div><div class="small" id="lsince"></div><div class="scan" id="lscan"><i></i></div></div>
+<div class="ms" id="lms"></div>
+<div id="lfeed"></div></div>
 <div class="card"><div class="grid">
 <div class="st"><b id="eq">-</b><span>資金（保有分は買値で計算）</span></div>
 <div class="st"><b id="rl">-</b><span>確定した損益（累計）</span></div>
@@ -136,5 +159,35 @@ ${Object.keys(D.samples).length?"<br>エラー例："+Object.values(D.samples).m
 const R=Object.entries(D.stats.rejected||{}).sort((a,b)=>b[1]-a[1]).slice(0,10);
 $("#rej").innerHTML=R.length?R.map(([k,v])=>`<div class="row" style="display:flex;justify-content:space-between"><span>${k.replace(/</g,"")}</span><b>${v}</b></div>`).join(""):'<div class="small">まだありません</div>';
 $("#gaps").innerHTML=D.gaps.length?D.gaps.map(g=>`<div class="row">${ago(g.ts)} ・ ${Math.round(g.sec/60)}分停止 ・ 再開時の保有 ${g.open}件</div>`).join(""):'<div class="small">記録なし</div>';
+(function(){
+  const esc=x=>String(x==null?"":x).replace(/[<>&"]/g,c=>({"<":"&lt;",">":"&gt;","&":"&amp;",'"':"&quot;"}[c]));
+  const RN={BUY:"買い",SELL:"売り",STOP:"損切り",REJECT:"見送り",SKIP:"除外",WATCH:"様子見",WAIT:"待ち",NEW:"新着",ERROR:"エラー",NO_PRICE:"価格なし"};
+  const sec=t=>{const s=Math.max(0,Math.round(Date.now()/1000-t));return s<60?s+"秒前":s<3600?Math.floor(s/60)+"分前":Math.floor(s/3600)+"時間前"};
+  const seen=new Set();let first=true,last=null,fails=0;
+  function paint(){
+    if(!last){$("#lage").textContent=fails>2?"ライブ情報なし（iMacが新しい版で再起動すると表示されます）":"接続中…";$("#ldot").className="dot off";return}
+    const L=last,n=L.now||{},age=Date.now()/1000-L.ts,busy=n.icon!=="💤";
+    $("#ldot").className=age>90?"dot off":"dot";
+    $("#lage").textContent=age>90?"⚠️ "+sec(L.ts)+"から動きがありません":"・ "+sec(L.ts)+"に更新";
+    $("#lnow").innerHTML=`<span class="i">${esc(n.icon)}</span>${n.sym?`<span class="sym">${esc(n.sym)}</span>`:""}${esc(n.text)}`;
+    $("#lsince").textContent=n.since?(busy?"この作業を始めて "+Math.max(0,Math.round(Date.now()/1000-n.since))+"秒":"待機 "+Math.max(0,Math.round(Date.now()/1000-n.since))+"秒"):"";
+    $("#lscan").className="scan"+(busy?"":" idle");
+    document.querySelectorAll("#lfeed .ag").forEach(e=>e.textContent=sec(+e.dataset.t));
+  }
+  function render(L){
+    const st=L.status||{};
+    $("#lms").innerHTML=st.cash!=null?`<span>残高 <b>$${(+st.cash).toFixed(2)}</b></span><span>保有 <b>${st.open}</b></span><span>審査済 <b>${st.evaluated}</b></span><span>審査待ち <b>${st.waiting}</b></span><span>買い <b>${st.bought}</b></span><span>処理ステップ <b>${(L.steps||0).toLocaleString()}</b></span>`:"";
+    $("#lfeed").innerHTML=(L.feed||[]).map(f=>{const k=f.t+f.x,isNew=!first&&!seen.has(k);seen.add(k);
+      const s=f.s?(f.m?`<a class="sym" href="https://dexscreener.com/solana/${encodeURIComponent(f.m)}" target="_blank" rel="noopener">${esc(f.s)}</a>`:`<span class="sym">${esc(f.s)}</span>`):"";
+      return `<div class="lf${isNew?" new":""}"><span class="ic">${esc(f.i)}</span><div style="flex:1;min-width:0">${s}${esc(f.x)}${f.r&&RN[f.r]?`<span class="r r-${esc(f.r)}">${RN[f.r]}</span>`:""}</div><span class="ag" data-t="${f.t}">${sec(f.t)}</span></div>`}).join("")||'<div class="small">まだ動きがありません</div>';
+    first=false;
+  }
+  async function poll(){
+    try{const r=await fetch("live.json?"+Date.now(),{cache:"no-store"});if(!r.ok)throw 0;const L=await r.json();
+      fails=0;if(!last||L.ts!==last.ts){last=L;render(L)}}catch(e){fails++}
+    paint();
+  }
+  poll();setInterval(poll,2000);setInterval(paint,1000);
+})();
 </script></body></html>
 """

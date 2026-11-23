@@ -21,6 +21,7 @@ def tmp_data(tmp_path, monkeypatch):
     monkeypatch.setattr(C, "DECISIONS_LOG", tmp_path / "d.jsonl")
     monkeypatch.setattr(C, "DB_FILE", tmp_path / "d.sqlite")
     monkeypatch.setattr(C, "KILL_FILE", tmp_path / "KILL")
+    monkeypatch.setattr(C, "LIVE_FILE", tmp_path / "live.json")
     P._db = None
     yield
     P._db = None
@@ -486,3 +487,34 @@ def test_exit_profiles_differ_on_same_path():
     assert e == pytest.approx(T.simulate(path)), "E is the live profile"
 
 
+
+
+# ------------------------------------------------------------------ live "now doing" feed (display only)
+def test_live_feed_shows_each_step(monkeypatch):
+    import json as _j
+    from desk import live as L
+    from desk import notify as N
+    L.reset()
+    monkeypatch.setattr(N, "send_async", lambda *a, **k: None)
+    s = P.new_state()
+    s["candidates"]["M"] = {"seen": NOW - 1800, "grad": None, "symbol": "GOOD", "status": "waiting", "checks": 0}
+    d = M.Desk(state=s, fetch_pairs=lambda ms: {m: pair() for m in ms},
+               rug=lambda mint, p, st, radar, now: rug(p=p, state=st))
+    monkeypatch.setattr(M, "credits_ok", lambda st: True)
+    monkeypatch.setattr(M, "load_radar", lambda: {"bots": set(), "tokens": {}})
+    d.cycle(NOW)
+    live = _j.loads(C.LIVE_FILE.read_text())
+    results = [f["r"] for f in live["feed"]]
+    assert "BUY" in results and any(f["s"] == "GOOD" for f in live["feed"])
+    assert any("審査中" in f["x"] for f in live["feed"])        # the "checking this coin now" step
+    assert live["now"]["icon"] == "💤" and live["status"]["open"] == 1
+
+
+def test_live_feed_can_never_stop_the_desk(monkeypatch, tmp_path):
+    from desk import live as L
+    blocker = tmp_path / "file"
+    blocker.write_text("x")
+    monkeypatch.setattr(C, "LIVE_FILE", blocker / "sub" / "live.json")   # impossible path
+    L.step("🔍", "test", "SYM", "MINT")                                  # must not raise
+    L.idle("wait")
+    L.flush()
