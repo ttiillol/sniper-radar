@@ -1,8 +1,6 @@
 name: sniper-radar
 
 on:
-  schedule:
-    - cron: "17 * * * *"     # every hour at :17 (UTC)
   workflow_dispatch:
   push:
     branches: [main]
@@ -29,6 +27,7 @@ jobs:
 
   radar:
     needs: test
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 58
     steps:
@@ -51,6 +50,7 @@ jobs:
 
   desk:
     needs: test
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 58
     steps:
@@ -73,7 +73,7 @@ jobs:
 
   publish:
     needs: [radar, desk]
-    if: always()
+    if: always() && github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     environment:
       name: github-pages

@@ -11,4 +11,6 @@ export DESK_TICK=10
 R=$!
 ./.venv/bin/python -m desk.main run --minutes 1440 &
 D=$!
+# rebuild the local pages every 10 minutes (open ~/sniper-radar/site/desk.html on this Mac)
+( while kill -0 $R 2>/dev/null || kill -0 $D 2>/dev/null; do ./.venv/bin/python build_page.py >/dev/null 2>&1; sleep 600; done ) &
 wait $R $D
