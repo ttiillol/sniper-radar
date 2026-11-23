@@ -1,2 +1,4 @@
 requests>=2.31
 websockets>=12
+rich>=13
+pytest>=8

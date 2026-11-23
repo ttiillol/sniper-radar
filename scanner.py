@@ -138,8 +138,8 @@ def tx_signer_and_delta(sig, mint, rpc_call=rpc):
     return signer, bal(meta.get("postTokenBalances")) - bal(meta.get("preTokenBalances"))
 
 
-def analyze_token(mint, creator, rpc_call=rpc):
-    sigs = earliest_signatures(mint, rpc_call)
+def analyze_token(mint, creator, rpc_call=rpc, max_pages=3):
+    sigs = earliest_signatures(mint, rpc_call, max_pages)
     create_slot = sigs[0]["slot"]
     best = {}
     for s in sigs[:MAX_EARLY_TX]:

@@ -53,6 +53,10 @@ def main():
     (SITE / "bots.json").write_text(json.dumps(feed, separators=(",", ":")))
     print("site/bots.json written:", len(feed["bots"]), "bots,", len(feed["tokens"]), "tokens")
 
+    from desk import page as desk_page
+    desk_page.build(SITE)
+    print("site/desk.html written")
+
 
 TEMPLATE = r"""<!DOCTYPE html>
 <html lang="ja"><head><meta charset="utf-8">
@@ -80,6 +84,7 @@ button{margin-top:8px;width:100%;padding:12px;border:0;border-radius:10px;backgr
 .hrow{display:flex;justify-content:space-between;font-size:13px;padding:3px 0}.ok{color:var(--grn)}.warn{color:var(--org)}.bad{color:var(--red)}
 .help{font-size:12.5px;color:var(--mut)}.help b{color:var(--tx)}
 </style></head><body>
+<div style="display:flex;gap:8px;margin-bottom:12px"><a href="./" style="flex:1;text-align:center;padding:8px;border-radius:10px;background:var(--acc);color:#04122a;font-weight:700;font-size:13px;text-decoration:none">🎯 レーダー</a><a href="desk.html" style="flex:1;text-align:center;padding:8px;border-radius:10px;background:var(--card);border:1px solid var(--line);color:var(--acc);font-size:13px;text-decoration:none">📈 デスク</a></div>
 <h1>🎯 狙撃ボット・レーダー</h1>
 <div class="sub" id="upd"></div>
 

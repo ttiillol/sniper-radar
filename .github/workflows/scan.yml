@@ -3,10 +3,10 @@ name: sniper-radar
 on:
   schedule:
     - cron: "7 * * * *"      # every hour at :07 (UTC)
-  workflow_dispatch:          # "Run workflow" button for manual runs
+  workflow_dispatch:
   push:
     branches: [main]
-    paths: [".github/workflows/scan.yml", "scanner.py", "build_page.py"]   # run right after the program is updated
+    paths: [".github/workflows/scan.yml", "scanner.py", "build_page.py", "desk/**"]
 
 permissions:
   contents: write
@@ -18,36 +18,75 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  scan:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -r requirements.txt
+      - run: python -m pytest -q tests     # rules must pass before anything runs
+
+  radar:
+    needs: test
     runs-on: ubuntu-latest
     timeout-minutes: 58
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -r requirements.txt
+      - name: Collect early buyers
+        run: python scanner.py --minutes 40 --max-tokens 150
+        env: { RPC_URL: "${{ secrets.RPC_URL }}" }
+      - name: Save data
+        if: always()
+        run: |
+          git config user.name "sniper-radar"
+          git config user.email "actions@users.noreply.github.com"
+          git add data/wallets.json data/tokens.json data/meta.json
+          git diff --cached --quiet || git commit -m "radar data"
+          for i in 1 2 3 4 5; do git pull --rebase -X theirs origin main && git push && break; sleep $((i*4)); done
+
+  desk:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 58
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -r requirements.txt
+      - name: Paper desk (no real money)
+        run: python -m desk.main run --minutes 50
+        env: { RPC_URL: "${{ secrets.RPC_URL }}" }
+      - name: Save data
+        if: always()
+        run: |
+          git config user.name "sniper-radar"
+          git config user.email "actions@users.noreply.github.com"
+          git add data/desk
+          git diff --cached --quiet || git commit -m "desk data"
+          for i in 1 2 3 4 5; do git pull --rebase -X theirs origin main && git push && break; sleep $((i*4)); done
+
+  publish:
+    needs: [radar, desk]
+    if: always()
+    runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+        with: { ref: main }
       - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
+        with: { python-version: "3.12" }
       - run: pip install -r requirements.txt
-      - name: Collect early buyers
-        run: python scanner.py --minutes 40 --max-tokens 150
-        env:
-          RPC_URL: ${{ secrets.RPC_URL }}
-      - name: Build phone page
-        run: python build_page.py
-      - name: Save data
-        run: |
-          git config user.name "sniper-radar"
-          git config user.email "actions@users.noreply.github.com"
-          git add data
-          git diff --cached --quiet || git commit -m "data update"
-          for i in 1 2 3; do git pull --rebase -X theirs origin main && git push && break; sleep 5; done
+      - run: python build_page.py
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
-        with:
-          path: site
+        with: { path: site }
       - id: deploy
         uses: actions/deploy-pages@v4
