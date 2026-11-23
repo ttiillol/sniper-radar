@@ -28,11 +28,14 @@ class Scanner:
 
     def backfill(self, state):
         """Best effort: recently graduated coins from pump.fun (covers gaps between runs)."""
-        url = ("https://frontend-api-v3.pump.fun/coins?offset=0&limit=50&sort=last_trade_timestamp"
-               "&order=DESC&includeNsfw=false&complete=true")
-        data = S.get_json(url)
+        base = "https://frontend-api-v3.pump.fun/coins?offset=0&limit=50&order=DESC&includeNsfw=false&complete=true"
+        rows = []
+        # newest-created graduates are the likeliest fresh graduations; recently traded ones as a second net
+        for sort in ("created_timestamp", "last_trade_timestamp"):
+            data = S.get_json(base + "&sort=" + sort)
+            rows += data if isinstance(data, list) else []
         n = 0
-        for c in data if isinstance(data, list) else []:
+        for c in rows:
             if c.get("complete") and c.get("mint") and c["mint"] not in state["candidates"]:
                 self.on_migration(state, {"mint": c["mint"], "symbol": c.get("symbol", "")})
                 n += 1
