@@ -518,3 +518,63 @@ def test_live_feed_can_never_stop_the_desk(monkeypatch, tmp_path):
     L.step("🔍", "test", "SYM", "MINT")                                  # must not raise
     L.idle("wait")
     L.flush()
+
+
+# ------------------------------------------------------------------ trade journal (R multiples) + daily report
+def _round_trip(s, mint, sym, cost, sell_price, entry_price=1.0):
+    P.paper_buy(s, mint, sym, cost, entry_price, 10_000_000, "t", NOW)   # huge pool -> ~no slippage
+    return P.paper_sell(s, mint, 1.0, sell_price, "t", NOW + 600)
+
+
+def test_journal_r_multiples_and_stats():
+    from desk import journal as J
+    s = P.new_state()
+    _round_trip(s, "W", "WIN", 10, 1.5)        # about +46% after fees
+    _round_trip(s, "L", "LOSE", 10, 0.7)       # about -31% (the stop)
+    tr = J.trades(s)
+    assert [t["symbol"] for t in tr] == ["WIN", "LOSE"]
+    assert tr[0]["R"] > 1.4 and -1.1 < tr[1]["R"] < -0.9       # 1R = $3 on a $10 buy
+    st = J.stats(tr)
+    assert st["n"] == 2 and st["wins"] == 1 and st["win"] == 0.5
+    assert st["pf"] > 1 and st["mdd"] > 0 and len(st["curve"]) == 2
+    assert st["avgR"] == round((tr[0]["R"] + tr[1]["R"]) / 2, 2)
+
+
+def test_journal_ignores_open_and_partial_positions():
+    from desk import journal as J
+    s = P.new_state()
+    P.paper_buy(s, "O", "OPEN", 10, 1.0, 10_000_000, "t", NOW)
+    P.paper_sell(s, "O", 1 / 3, 1.5, "t", NOW + 60)            # partial sell, still holding
+    assert J.trades(s) == [] and J.stats([])["n"] == 0
+
+
+def test_day_report_sent_once_after_hawaii_date_changes():
+    from desk import journal as J
+    s = P.new_state()
+    sent = []
+    send = lambda t, b: sent.append((t, b))
+    day1 = 1_800_000_000
+    assert not J.maybe_day_report(s, send, day1)                 # first call only remembers the day
+    assert not J.maybe_day_report(s, send, day1 + 60)
+    assert J.maybe_day_report(s, send, day1 + 86_400)            # next day -> one report
+    assert not J.maybe_day_report(s, send, day1 + 86_400 + 60)
+    assert len(sent) == 1 and "まとめ" in sent[0][0] and "残高" in sent[0][1]
+
+
+def test_summary_lists_shortlist_candidates():
+    s = P.new_state()
+    s["candidates"]["A"] = {"symbol": "AAA", "status": "waiting", "score": 55, "checks": 1}
+    s["candidates"]["B"] = {"symbol": "BBB", "status": "waiting", "checks": 0}
+    s["candidates"]["C"] = {"symbol": "CCC", "status": "rejected", "score": 90, "checks": 1}
+    txt = M.Desk(state=s).summary_text()
+    assert "有力候補: AAA 55点" in txt and "CCC" not in txt and "審査前のコイン 1件" in txt
+
+
+def test_desk_page_builds_with_journal(tmp_path):
+    from desk import page
+    s = P.new_state()
+    _round_trip(s, "W", "WIN", 10, 1.5)
+    P.save_state(s)
+    page.build(tmp_path)
+    html = (tmp_path / "desk.html").read_text()
+    assert "成績（R倍数）" in html and '"journal":{"n":1' in html and "検証 vs 実際" in html

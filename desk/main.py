@@ -21,6 +21,7 @@ from . import sources as S
 from . import tracker as T
 from . import notify as N
 from . import live as L
+from . import journal as J
 import scanner
 
 
@@ -200,6 +201,7 @@ class Desk:
         if not sn["ok"] or score < C.MIN_ENTRY_SCORE:
             if cand["checks"] < 4 and sn["ok"] and score >= 40:
                 cand["next_check"] = now + 300      # look again in 5 minutes
+                cand["score"] = score
                 T.start(self.s, mint, sym, price0, liq0, "WATCH", [], score, now, facts=rg["facts"])
                 P.log_decision("entry", mint, sym, "WATCH", f"点数{score}（{C.MIN_ENTRY_SCORE}未満）— 5分後にまた確認", **why)
                 L.step("👁", f"点数{score}（合格は{C.MIN_ENTRY_SCORE}点）— 5分後にもう一度見る", sym, mint, "WATCH")
@@ -293,6 +295,13 @@ class Desk:
                      f" ・ エラー {st.get('errors', 0)}")
         if rej:
             lines.append("見送り多い理由: " + " / ".join(f"{k} {v}" for k, v in rej))
+        try:
+            js = J.stats(J.trades(s))
+            if js["n"]:
+                lines.append(f"成績 {js['n']}件 ・ 勝率 {js['win'] * 100:.0f}% ・ 1回平均 {js['avgR']:+.2f}R ・ 合計 {js['totalR']:+.2f}R")
+        except Exception:
+            pass
+        lines += self.shortlist()
         outs = s.get("outcomes", [])
         if outs:
             win = sum(1 for o in outs if o["sim"] > 0) / len(outs)
@@ -305,6 +314,19 @@ class Desk:
         except Exception:
             pass
         return "\n".join(lines)
+
+    def shortlist(self, k=3):
+        """Pre-filtered watchlist for the 30-min message: coins still in play, best first."""
+        wait = [c for c in self.s["candidates"].values() if c.get("status") == "waiting"]
+        scored = sorted((c for c in wait if c.get("score") is not None), key=lambda c: -c["score"])[:k]
+        out = []
+        if scored:
+            out.append("有力候補: " + " / ".join(f"{c.get('symbol') or '?'} {c['score']}点" for c in scored)
+                       + f"（合格 {C.MIN_ENTRY_SCORE}点）")
+        fresh = len(wait) - len([c for c in wait if c.get("score") is not None])
+        if fresh:
+            out.append(f"まだ審査前のコイン {fresh}件")
+        return out
 
     def heartbeat(self, now=None):
         self.s["last_heartbeat"] = int(now or time.time())
@@ -342,10 +364,17 @@ async def run_loop(minutes):
     gap_txt = f"（{gaps[-1]['sec'] // 60}分止まっていました）" if gaps and time.time() - gaps[-1]["ts"] < 120 else ""
     N.send_async("▶️ デスク起動" + gap_txt, desk.summary_text(), tags=["arrow_forward"], click=dash())
 
+    def day_report():
+        try:
+            J.maybe_day_report(desk.s, lambda t, b: N.send_async(t, b, tags=["crescent_moon"], click=dash()))
+        except Exception as e:
+            desk._error("day_report", "", e)
+
     async def ticker():
         last_fill = time.time()
         last_sum = time.time()
         while time.time() < until:
+            day_report()
             if time.time() - last_sum > 1800:
                 last_sum = time.time()
                 N.send_async("📊 30分ごとの状況（練習）", desk.summary_text(), tags=["bar_chart"], click=dash())

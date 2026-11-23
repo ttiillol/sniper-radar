@@ -6,6 +6,7 @@ from pathlib import Path
 from . import config as C
 from . import portfolio as P
 from . import tracker as T
+from . import journal as J
 
 
 def build(site: Path):
@@ -17,6 +18,12 @@ def build(site: Path):
         decisions = []
     slim = [{k: d.get(k) for k in ("ts", "kind", "mint", "symbol", "action", "reason")} for d in decisions]
     mk = time.strftime("%Y-%m", time.gmtime())
+    try:
+        tr = J.trades(s)
+        jstats, bvl = J.stats(tr), J.backtest_vs_live(s, tr)
+        jtr = [{k: t[k] for k in ("symbol", "mint", "closed", "R", "ret", "pnl", "hold_min", "exit")} for t in tr[-40:]][::-1]
+    except Exception:
+        jstats, bvl, jtr = {"n": 0, "curve": []}, {}, []
     payload = {
         "cash": s["cash"], "realized": s["realized"], "today": P.day_pnl(s),
         "positions": s["positions"], "halted": s["halted"], "kill": C.KILL_FILE.exists(),
@@ -26,6 +33,7 @@ def build(site: Path):
             1 for c in s["candidates"].values() if c.get("status") == "waiting"),
         "verify": T.summarize(s.get("outcomes", [])), "tracking": len(s.get("tracking", {})),
         "outcomes_n": len(s.get("outcomes", [])),
+        "journal": jstats, "jtrades": jtr, "bvl": bvl, "risk_pct": J.RISK_PCT,
         "limits": {"daily": C.DAILY_LOSS_LIMIT, "total": C.TOTAL_LOSS_LIMIT, "max": C.MAX_OPEN_POSITIONS,
                    "start": C.START_CASH},
     }
@@ -71,6 +79,10 @@ a{color:var(--acc);text-decoration:none}h1{font-size:20px;margin:4px 0 2px}.sub{
 .lf{display:flex;gap:8px;align-items:flex-start;padding:7px 4px;border-top:1px solid var(--line);font-size:13px;border-radius:6px}
 .lf .ic{width:22px;text-align:center;flex:none}.lf .ag{flex:none;width:44px;text-align:right;font-size:11px;color:var(--mut);padding-top:2px}
 .new{animation:flash 2.2s ease-out}@keyframes flash{0%{background:#23314d;transform:translateY(-6px);opacity:.2}25%{opacity:1;transform:none}100%{background:transparent}}
+.rr{display:flex;gap:8px;align-items:center;padding:7px 0;border-top:1px solid var(--line);font-size:13px}
+.rb{flex:none;width:90px;height:10px;background:#11141a;border-radius:5px;position:relative}.rb::after{content:"";position:absolute;left:50%;top:-2px;bottom:-2px;width:1px;background:#3b4152}
+.rb i{position:absolute;top:0;height:100%;border-radius:5px}
+.cmp{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.cmp div{background:#11141a;border-radius:10px;padding:9px;font-size:11.5px;color:var(--mut)}.cmp b{display:block;font-size:17px;color:var(--tx)}
 .r{font-size:10.5px;font-weight:700;padding:1px 6px;border-radius:99px;margin-left:4px;white-space:nowrap;display:inline-block}
 .r-BUY{background:#0f2e1d;color:var(--grn)}.r-SELL{background:#16263f;color:var(--acc)}.r-STOP,.r-ERROR,.r-NO_PRICE{background:#3a1416;color:var(--red)}
 .r-REJECT,.r-SKIP{background:#2a2d35;color:var(--mut)}.r-WATCH,.r-WAIT{background:#3a2810;color:var(--org)}.r-NEW{background:#26203a;color:#b69cff}
@@ -93,6 +105,8 @@ a{color:var(--acc);text-decoration:none}h1{font-size:20px;margin:4px 0 2px}.sub{
 <div class="small" style="margin-top:10px">今日の損失枠 <span id="dl"></span></div><div class="bar"><i id="dlb"></i></div>
 <div class="small" style="margin-top:8px">累計の損失枠 <span id="tl"></span></div><div class="bar"><i id="tlb"></i></div>
 </div>
+<div class="card" id="rc"></div>
+<div class="card" id="bvl"></div>
 <div class="card"><h2>📡 ライブフィード <span class="small">（1分ごとに自動更新）</span></h2><div id="feed"></div></div>
 <div class="card" id="vc"></div>
 <div class="card" id="hc"></div>
@@ -159,6 +173,37 @@ ${Object.keys(D.samples).length?"<br>エラー例："+Object.values(D.samples).m
 const R=Object.entries(D.stats.rejected||{}).sort((a,b)=>b[1]-a[1]).slice(0,10);
 $("#rej").innerHTML=R.length?R.map(([k,v])=>`<div class="row" style="display:flex;justify-content:space-between"><span>${k.replace(/</g,"")}</span><b>${v}</b></div>`).join(""):'<div class="small">まだありません</div>';
 $("#gaps").innerHTML=D.gaps.length?D.gaps.map(g=>`<div class="row">${ago(g.ts)} ・ ${Math.round(g.sec/60)}分停止 ・ 再開時の保有 ${g.open}件</div>`).join(""):'<div class="small">記録なし</div>';
+(function(){
+  const J=D.journal||{n:0},pct=x=>(x>0?"+":"")+(x*100).toFixed(1)+"%",Rf=x=>x==null?"-":(x>0?"+":"")+x.toFixed(2)+"R";
+  let h=`<h2>📐 成績（R倍数） <span class="small">1R＝買った額×${Math.round(D.risk_pct*100)}%（損切り幅＝計画したリスク）</span></h2>`;
+  if(!J.n){h+='<div class="small">まだ終わったトレードがありません。売り終わると、ここに1件ずつ「何R勝った／負けた」が並びます。</div>'}
+  else{
+    h+=`<div class="grid">
+    <div class="st"><b>${J.n}件 ・ ${(J.win*100).toFixed(0)}%</b><span>終わったトレード ・ 勝率</span></div>
+    <div class="st"><b class="${cls(J.avgR)}">${Rf(J.avgR)}</b><span>1回あたり平均（期待値）</span></div>
+    <div class="st"><b class="${cls(J.totalR)}">${Rf(J.totalR)}</b><span>合計R（${sg(J.pnl)}）</span></div>
+    <div class="st"><b>${J.pf==null?"負けなし":J.pf.toFixed(2)}</b><span>PF（総利益÷総損失・1超えでプラス）</span></div>
+    <div class="st"><b class="neg">-$${J.mdd.toFixed(2)}</b><span>最大の落ち込み（${J.mdd_pct}%）</span></div>
+    <div class="st"><b>${J.hold}分</b><span>平均保有 ・ 勝ち平均 ${Rf(J.avgWinR)} ／ 負け平均 ${Rf(J.avgLossR)}</span></div></div>`;
+    const c=J.curve;if(c.length>1){const ys=c.map(p=>p[1]).concat([D.limits.start]),mn=Math.min(...ys),mx=Math.max(...ys),W=600,H=90,
+      X=i=>i/(c.length-1)*W,Y=v=>H-6-(v-mn)/((mx-mn)||1)*(H-12);
+      h+=`<div class="small" style="margin-top:10px">資金の推移（終わったトレードごと）</div><svg viewBox="0 0 ${W} ${H}" style="width:100%;height:90px;margin-top:4px">
+      <line x1="0" x2="${W}" y1="${Y(D.limits.start)}" y2="${Y(D.limits.start)}" stroke="#3b4152" stroke-dasharray="4 4"/>
+      <polyline fill="none" stroke="${c[c.length-1][1]>=D.limits.start?"#3ddc84":"#ff5d5d"}" stroke-width="2.5" points="${c.map((p,i)=>X(i)+","+Y(p[1])).join(" ")}"/></svg>`}
+    h+=`<div style="margin-top:8px">`+(D.jtrades||[]).slice(0,15).map(t=>{const w=Math.min(50,Math.abs(t.R)/3*50);
+      return `<div class="rr"><b style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><a href="https://dexscreener.com/solana/${t.mint}" target="_blank" rel="noopener">${(t.symbol||"?").replace(/</g,"")}</a>
+      <span class="small"> ${ago(t.closed)} ・ ${t.hold_min}分保有</span></b><span class="rb"><i style="${t.R>=0?"left:50%":"right:50%"};width:${w}%;background:${t.R>=0?"var(--grn)":"var(--red)"}"></i></span>
+      <b class="${cls(t.R)}" style="width:62px;text-align:right">${Rf(t.R)}</b></div>`}).join("")+`</div>`;
+  }
+  $("#rc").innerHTML=h;
+  const B=D.bvl||{},box=(t,v)=>`<div>${t}<b>${v?(v.win*100).toFixed(0)+"%":"-"}</b>勝率 ・ 平均 ${v?pct(v.avg):"-"}<br>${v?v.n:0}件</div>`;
+  let msg='まだ件数が少ないので判断できません（どちらも20件以上で目安になります）';
+  if(B.sim_bought&&B.live&&B.sim_bought.n>=20&&B.live.n>=20){const d=(B.live.avg-B.sim_bought.avg)*100;
+    msg=Math.abs(d)<5?'検証と実際がほぼ同じ — 検証の数字を信用してルール調整できます':d<0?`実際が検証より ${Math.abs(d).toFixed(1)}ポイント悪い — 手数料・すべり・急落時の売り遅れが原因の可能性。検証だけで判断しないこと`:`実際が検証より ${d.toFixed(1)}ポイント良い — たまたまの可能性も。件数を増やして確認`}
+  $("#bvl").innerHTML=`<h2>🧪 検証 vs 実際 <span class="small">（バックテストどおりに勝てているか）</span></h2>
+  <div class="cmp">${box("検証<br>（買ったコイン）",B.sim_bought)}${box("実際<br>（練習売買）",B.live)}${box("参考<br>（審査した全コイン）",B.sim_all)}</div>
+  <div class="small" style="margin-top:8px">検証＝同じコインに売り方Eを当てはめた計算上の成績。${msg}</div>`;
+})();
 (function(){
   const esc=x=>String(x==null?"":x).replace(/[<>&"]/g,c=>({"<":"&lt;",">":"&gt;","&":"&amp;",'"':"&quot;"}[c]));
   const RN={BUY:"買い",SELL:"売り",STOP:"損切り",REJECT:"見送り",SKIP:"除外",WATCH:"様子見",WAIT:"待ち",NEW:"新着",ERROR:"エラー",NO_PRICE:"価格なし"};
