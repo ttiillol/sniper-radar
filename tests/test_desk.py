@@ -520,7 +520,7 @@ def test_exit_profiles_differ_on_same_path():
     b = T.simulate_profile(path, T.PROFILES["B_業界標準(-35%,2倍で半分)"])
     e = T.simulate_profile(path, T.PROFILES["E_ハイブリッド(旧)"])
     sc = T.simulate_profile(path, T.PROFILES["S_勢いスキャル(旧)"])
-    r = T.simulate_profile(path, T.PROFILES["R_ランナー(採用中)"])
+    r = T.simulate_profile(path, T.PROFILES["R_ランナー(旧)"])
     assert a < 0 < b and e > 0, (a, b, e)
     assert sc < 0, "the scalp's shallow stop gives up a dip-then-runner (its known trade-off)"
     assert r > 0.5, "the runner survives a -10% dip and rides the move"
@@ -963,7 +963,7 @@ def test_one_minute_candles_score_strictly():
     assert T.refine(s, lambda pool, a, b, mint: got.append(mint) or both, now=t0 + T.TRACK_HOURS * 3600 + 200) == 1
     o = s["outcomes"][0]
     assert got == ["M"], "the coin's own price is requested"
-    assert o["fine"] and o["sims"]["S_勢いスキャル(旧)"] < -0.06 and "R_ランナー(採用中)" in o["sims"]
+    assert o["fine"] and o["sims"]["S_勢いスキャル(旧)"] < -0.06 and "T_高速スキャル(採用中)" in o["sims"]
 
 
 def test_ohlcv_real_shape(monkeypatch):
@@ -1230,3 +1230,51 @@ def test_real_danger_is_still_rejected_at_once(monkeypatch):
     d = M.Desk(state=s, fetch_pairs=lambda ms: {m: pair() for m in ms}, rug=rug)
     assert d.evaluate("M", pair(), {"bots": set(), "tokens": {}}, NOW) == "rejected"
     assert s["candidates"]["M"]["hard_until"] > NOW
+
+
+def test_turbo_is_on_and_keeps_the_loss_limits():
+    import importlib
+    assert C.TURBO and C.TURBO_SETTINGS["EXIT_PROFILE"] is C.EXIT_PROFILE_T
+    for k in ("DAILY_LOSS_LIMIT", "TOTAL_LOSS_LIMIT", "MAX_SELL_IMPACT", "MAX_TOP10_PCT", "MIN_HOLDERS"):
+        assert k not in C.TURBO_SETTINGS, f"turbo must not loosen {k}"
+
+
+@pytest.mark.turbo
+def test_turbo_size_and_positions():
+    s = P.new_state()
+    r = A.risk(s, pair(), NOW)
+    assert r["ok"] and r["size"] == pytest.approx(50)                   # 5% of $1,000
+    for i in range(7):
+        s["positions"][f"m{i}"] = {"cost": 1.0}
+    assert A.risk(s, pair(), NOW)["ok"], "8 positions allowed"
+    s["positions"]["m7"] = {"cost": 1.0}
+    assert not A.risk(s, pair(), NOW)["ok"]
+
+
+@pytest.mark.turbo
+def test_turbo_momentum_gate_is_looser():
+    mk = lambda m5, vol: dict(pair(), priceChange={"m5": m5, "h1": 5}, volume={"m5": vol},
+                              txns={"m5": {"buys": 30, "sells": 10}, "h1": {"buys": 300, "sells": 100}})
+    assert A.momentum(mk(0.7, 2_000))["ok"]          # +0.7% / $2k would have failed before
+    assert A.momentum(mk(12, 5_000))["ok"]           # +12% no longer counts as a spike
+    assert not A.momentum(mk(0.2, 5_000))["ok"]
+    assert not A.momentum(mk(3, 1_000))["ok"]
+
+
+def test_turbo_exit_profile_rules():
+    E = __import__("desk.exits", fromlist=["step"])
+    p = C.EXIT_PROFILE_T
+    st = {"entry": 1.0, "peak": 1.0, "opened": 0}
+    assert E.step(st, 0.93, 60, p)[0] == 0                  # -7%: still holding
+    assert E.step(st, 0.919, 120, p)[0] == 1                # -8.1%: stop
+    st = {"entry": 1.0, "peak": 1.0, "opened": 0}
+    assert E.step(st, 1.06, 60, p)[0] == 0                  # +6% armed
+    f, why = E.step(st, 1.028, 90, p)                       # 3% off the +6% peak -> lock the small win
+    assert f == 1 and "トレーリング" in why
+    st = {"entry": 1.0, "peak": 1.0, "opened": 0}
+    assert E.step(st, 1.09, 60, p)[0] == pytest.approx(0.5)   # +9%: half
+    assert E.step(st, 1.005, 120, p)[0] == pytest.approx(0.5)  # back to entry+0.5% -> rest out (no loss)
+    st = {"entry": 1.0, "peak": 1.0, "opened": 0}
+    assert E.step(st, 0.98, 11 * 60, p)[0] == 1             # below entry after 10 min -> out
+    st = {"entry": 1.0, "peak": 1.0, "opened": 0}
+    assert E.step(st, 1.02, 31 * 60, p)[0] == 1             # 30-minute cap

@@ -67,8 +67,9 @@ EXIT_PROFILE_S = {"sl": -0.06, "arm0": 0.06, "trail0": 0.04, "tps": [(0.10, 0.5)
 #   +25%: sell 1/3, the rest can't lose (floor entry +2%) / from +40%: trail 20% from the peak
 #   +100%: sell another 1/3 / last third: trail 30% from the peak (room for big runs)
 #   below entry after 60 minutes -> out; never hold longer than 6 hours
-EXIT_PROFILE = {"sl": -0.12, "arm0": 0.15, "trail0": 0.10, "tps": [(0.25, 1 / 3), (1.0, 1 / 3)], "be": 0.02,
-                "arm1": 0.40, "trail1": 0.20, "arm": 1.0, "trail": 0.30, "stale_min": 60, "max_min": 360}
+EXIT_PROFILE_R = {"sl": -0.12, "arm0": 0.15, "trail0": 0.10, "tps": [(0.25, 1 / 3), (1.0, 1 / 3)], "be": 0.02,
+                  "arm1": 0.40, "trail1": 0.20, "arm": 1.0, "trail": 0.30, "stale_min": 60, "max_min": 360}
+EXIT_PROFILE = EXIT_PROFILE_R
 SCALP_MIN_M5 = 1.0                  # price change over the last 5 minutes must be at least +1%...
 SCALP_MAX_M5 = 8.0                  # ...but not a spike (no chasing; was 25%, two fast stop-outs on day 1)
 SCALP_MIN_H1 = 0.0                  # and the last hour must be up (trend)
@@ -144,3 +145,39 @@ REENTRY_WAIT_SEC = 120              # after a stop-loss, look at the coin once m
 REENTRY_MIN_WHALES = 3              # ...and only re-buy if 3+ different whales bought within 2 minutes
 TRENDING_EVERY_SEC = 30
 WATCH_EVERY_SEC = 60                # named wallets (tier W) are checked every minute
+
+
+# ================================================================================================
+# TURBO (2026-11-24, owner: "switch to as fast as possible; you pick the benchmarks").
+# More, smaller, shorter trades. Safety checks (rug, sell test) and the loss limits are NOT loosened.
+# Set TURBO = False to go back to the runner settings above.
+TURBO = True
+# Exit profile "T: turbo scalp" - take quick wins, cut fast, never sit in a dead coin
+#   stop -8% / from +5%: sell all on a 3% pullback / +8%: sell half, rest can't lose (floor entry +1%)
+#   from +12%: trail 5% from the peak / below entry after 10 minutes -> out / never longer than 30 minutes
+#   (~3% round-trip costs are deducted, so the smallest locked win is still about +1-2% net)
+EXIT_PROFILE_T = {"sl": -0.08, "arm0": 0.05, "trail0": 0.03, "tps": [(0.08, 0.5)], "be": 0.01,
+                  "arm": 0.12, "trail": 0.05, "stale_min": 10, "max_min": 30}
+TURBO_SETTINGS = {
+    "EXIT_PROFILE": EXIT_PROFILE_T,
+    "SCALP_MIN_M5": 0.5,   # was +1%
+    "SCALP_MAX_M5": 15.0,   # was +8% (bigger spikes still go to the pullback watch)
+    "SCALP_MIN_PRESSURE": 0.52,   # was 55%
+    "SCALP_MIN_VOL_M5": 1_500,   # was $3,000
+    "MIN_ENTRY_SCORE": 50,   # was 60
+    "MIN_AGE_AFTER_GRAD_MIN": 10,   # was 20
+    "MIN_LIQ_USD": 20_000,   # was $25k
+    "SCALP_RECHECK_SEC": 10,   # was 20
+    "SCALP_MAX_CHECKS": 30,   # ~5 minutes of re-checks
+    "SCALP_COOLDOWN_SEC": 120,   # was 5 minutes
+    "SCALP_MAX_TRADES_PER_COIN": 6,   # was 3
+    "SCALP_RECHECK_REJECTED_MIN": 5,   # was 15
+    "MAX_EVALS_PER_CYCLE": 5,   # was 3
+    "MAX_OPEN_POSITIONS": 8,   # was 5
+    "MAX_POSITION_PCT": 0.05,   # normal ~$45 (was 10%)
+    "SIZE_STRONG_PCT": 0.08,   # was 20%
+    "SIZE_MAX_PCT": 0.15,   # was 50%
+}
+BASE_SETTINGS = {k: globals()[k] for k in TURBO_SETTINGS}   # the runner-era values (tests use these)
+if TURBO:
+    globals().update(TURBO_SETTINGS)

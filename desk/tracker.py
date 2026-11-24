@@ -34,7 +34,8 @@ PROFILES = {
     "F_2倍3倍利確(-12%)": {"sl": -0.12, "tps": [(1.0, 1 / 3), (2.0, 1 / 3)], "be": None, "arm": 0.25,
                           "trail": 0.25, "stale_min": None, "max_min": 1440},
     "S_勢いスキャル(旧)": C.EXIT_PROFILE_S,
-    "R_ランナー(採用中)": C.EXIT_PROFILE,
+    "R_ランナー(旧)": C.EXIT_PROFILE_R,
+    "T_高速スキャル(採用中)": C.EXIT_PROFILE_T,
 }
 FEATURES = ("holders", "sniper_hold_pct", "bundle_hold_pct", "insider_pct", "top3_pct", "top10_pct",
             "creator_prev", "creator_dead", "dev_pct", "liq", "kol_n")
