@@ -5,6 +5,7 @@ A trade that hits the stop is about -1R; a trade that makes 3x the planned risk 
 Built from the SQLite trades table, so trades made before this file existed are included.
 """
 import json
+import re
 import sqlite3
 import time
 
@@ -36,8 +37,9 @@ def trades(state):
         if side == "BUY":
             if mint in open_:                       # re-bought: the previous one must have closed
                 closed.append(open_.pop(mint))
+            m = re.search(r"損切り-(\d+(?:\.\d+)?)%", reason or "")
             open_[mint] = {"mint": mint, "symbol": sym, "opened": ts, "closed": None, "cost": usd,
-                           "pnl": 0.0, "sells": 0, "exit": ""}
+                           "pnl": 0.0, "sells": 0, "exit": "", "risk_pct": float(m.group(1)) / 100 if m else None}
         elif mint in open_:
             t = open_[mint]
             t["pnl"] += pnl or 0.0
@@ -49,7 +51,7 @@ def trades(state):
             closed.append(t)                        # fully sold
     closed.sort(key=lambda t: t["closed"] or 0)
     for t in closed:
-        risk = max(t["cost"] * RISK_PCT, 1e-9)
+        risk = max(t["cost"] * (t.pop("risk_pct", None) or RISK_PCT), 1e-9)
         t["R"] = round(t["pnl"] / risk, 2)
         t["ret"] = round(t["pnl"] / t["cost"], 4) if t["cost"] else 0.0
         t["hold_min"] = round(((t["closed"] or t["opened"]) - t["opened"]) / 60)

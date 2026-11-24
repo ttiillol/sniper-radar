@@ -35,10 +35,10 @@ PROFILES = {
                           "trail": 0.25, "stale_min": None, "max_min": 1440},
     "S_勢いスキャル(旧)": C.EXIT_PROFILE_S,
     "R_ランナー(旧)": C.EXIT_PROFILE_R,
-    "T_高速スキャル(採用中)": C.EXIT_PROFILE_T,
+    "T_高速(-8%固定)": C.EXIT_PROFILE_T,
 }
 FEATURES = ("holders", "sniper_hold_pct", "bundle_hold_pct", "insider_pct", "top3_pct", "top10_pct",
-            "creator_prev", "creator_dead", "dev_pct", "liq", "kol_n")
+            "creator_prev", "creator_dead", "dev_pct", "liq", "kol_n", "stop")
 
 
 def reason_key(text):
@@ -94,9 +94,10 @@ def simulate_profile(path, prof):
     return replay(path, prof, FRICTION)
 
 
-def simulate(path, entry=None):
-    """The desk's live exit rules (C.EXIT_PROFILE) replayed on a price path."""
-    return simulate_profile(path, C.EXIT_PROFILE)
+def simulate(path, entry=None, stop=None):
+    """The desk's live exit rules (C.EXIT_PROFILE, with the coin's adaptive stop if it had one) on a price path."""
+    prof = dict(C.EXIT_PROFILE, sl=-stop) if stop else C.EXIT_PROFILE
+    return simulate_profile(path, prof)
 
 
 def finish(state, mint):
@@ -106,7 +107,7 @@ def finish(state, mint):
     ps = [p for _, p in t["path"]]
     out = {"mint": mint, "symbol": t["symbol"], "t0": t["t0"], "decision": t["decision"],
            "score": t["score"], "liq": t["liq"], "reasons": t["reasons"],
-           "sim": round(simulate(t["path"]), 4),
+           "sim": round(simulate(t["path"], stop=(t.get("facts") or {}).get("stop")), 4),
            "max_up": round(max(ps) / ps[0] - 1, 4), "max_down": round(min(ps) / ps[0] - 1, 4),
            "end": round(ps[-1] / ps[0] - 1, 4), "samples": len(ps),
            "sims": {k: round(simulate_profile(t["path"], v), 4) for k, v in PROFILES.items()},
@@ -199,7 +200,7 @@ def refine(state, fetch, limit=2, now=None):
             continue
         path = candle_path(o["t0"], o["p0"], candles)
         ps = [p for _, p in path]
-        o.update(sim=round(simulate(path), 4), max_up=round(max(ps) / ps[0] - 1, 4),
+        o.update(sim=round(simulate(path, stop=(o.get("facts") or {}).get("stop")), 4), max_up=round(max(ps) / ps[0] - 1, 4),
                  max_down=round(min(ps) / ps[0] - 1, 4), end=round(ps[-1] / ps[0] - 1, 4),
                  samples=len(candles), fine=True,
                  sims={k: round(simulate_profile(path, v), 4) for k, v in PROFILES.items()})

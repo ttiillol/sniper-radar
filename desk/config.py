@@ -158,6 +158,15 @@ TURBO = True
 #   (~3% round-trip costs are deducted, so the smallest locked win is still about +1-2% net)
 EXIT_PROFILE_T = {"sl": -0.08, "arm0": 0.05, "trail0": 0.03, "tps": [(0.08, 0.5)], "be": 0.01,
                   "arm": 0.12, "trail": 0.05, "stale_min": 10, "max_min": 30}
+# ADAPTIVE STOP (2026-11-24, owner: "coins like JIMMY swing 20% and come back - start it in paper trading now")
+#   stop = 2.5 x the coin's average 1-minute swing (last 20 one-minute candles), between -8% and -20%.
+#   A wider stop buys LESS (size x 8% / stop), so a stop-out costs about the same dollars on every coin.
+#   No candles -> the profile's own stop (-8%).
+ADAPTIVE_STOP = True
+ATR_CANDLES = 20
+ATR_MULT = 2.5
+STOP_MIN = 0.08
+STOP_MAX = 0.20
 TURBO_SETTINGS = {
     "EXIT_PROFILE": EXIT_PROFILE_T,
     "SCALP_MIN_M5": 0.5,   # was +1%

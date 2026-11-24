@@ -454,6 +454,22 @@ def risk(state, pair, now=None, tier="normal"):
              slip=slip, tier=tier, gap=gap)
 
 
+# ============================================================ 6b. Adaptive stop
+def adaptive_stop(candles):
+    """candles [[ts, o, h, l, c], ...] -> (stop as a positive fraction, avg 1-minute swing or None, reason)."""
+    rows = [r for r in (candles or []) if r[4] and r[2] >= r[3] > 0][-C.ATR_CANDLES:]
+    if len(rows) < 5:
+        return C.STOP_MIN, None, f"揺れ幅が測れない → 標準の損切り−{C.STOP_MIN * 100:.0f}%"
+    swing = sum((h - l) / c for _, _, h, l, c in rows) / len(rows)
+    sl = min(C.STOP_MAX, max(C.STOP_MIN, C.ATR_MULT * swing))
+    return sl, swing, f"1分の平均の揺れ{swing * 100:.1f}% → 損切り−{sl * 100:.0f}%"
+
+
+def stop_size(size, sl):
+    """A wider stop buys less, so the dollars lost at the stop stay about the same."""
+    return size * min(1.0, C.STOP_MIN / sl) if sl else size
+
+
 # ============================================================ 6. Exit
 def exit_decision(pos, price, liq, now=None):
     """Returns (fraction_of_CURRENT_position_to_sell, reason) or (0, None). Uses C.EXIT_PROFILE."""
@@ -463,7 +479,10 @@ def exit_decision(pos, price, liq, now=None):
     if liq is not None and liq < 5000:
         pos["sold"] = 1.0
         return 1.0, f"流動性が急減（${liq:,.0f}）"
-    frac_init, why = step(pos, price, now, C.EXIT_PROFILE)
+    prof = C.EXIT_PROFILE
+    if pos.get("sl"):                                   # adaptive stop chosen for this coin at entry
+        prof = dict(prof, sl=-pos["sl"])
+    frac_init, why = step(pos, price, now, prof)
     if not frac_init:
         return 0, None
     left_before = 1.0 - before

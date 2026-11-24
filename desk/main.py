@@ -65,13 +65,14 @@ STAGE_JA = {"Rug": "安全チェック", "Sniper": "点数", "Risk": "資金ル�
 
 class Desk:
     def __init__(self, state=None, fetch_pairs=S.dex_pairs, rug=A.rug_check,
-                 trades=F.pool_trades, sell_check=F.sell_check):
+                 trades=F.pool_trades, sell_check=F.sell_check, candles=F.ohlcv):
         self.s = state or P.load_state()
         self.scanner = A.Scanner()
         self.fetch_pairs = fetch_pairs
         self.rug = rug
         self.trades = trades
         self.sell_check = sell_check
+        self.candles = candles
         self._dev_checked = {}
         self._jcache = (0.0, {"n": 0})
         self._last_refine = 0.0
@@ -405,6 +406,20 @@ class Desk:
             rk = A.risk(self.s, pair, now)
         if not rk["ok"]:
             return reject("Risk", rk["reasons"], score=score, facts=rg["facts"], **why_x)
+        sl, stop_why = None, ""
+        if C.ADAPTIVE_STOP:
+            try:
+                cs = self.candles((pair or {}).get("pairAddress"), now - 40 * 60, now, mint)
+            except Exception:
+                cs = None
+            sl, _, stop_why = A.adaptive_stop(cs)
+            new_size = A.stop_size(rk["size"], sl)
+            if new_size < rk["size"] - 1e-9:
+                stop_why += f"・金額を${rk['size']:.0f}→${new_size:.0f}に縮小"
+            rk["size"] = new_size
+            rk["gap"] = max(rk.get("gap") or C.WORST_CASE_GAP, sl + 0.05)
+            tier_why = tier_why + [stop_why]
+            rg["facts"]["stop"] = round(sl, 4)
         L.note("picker", f"{sym} {score}点（合格{C.MIN_ENTRY_SCORE}）", sym, "OK")
         L.note("sizer", f"{A.TIER_JA[tier]} ${rk['size']:.0f}（{'・'.join(tier_why) or '資産の10%'}）", sym, "OK")
         L.step("work", "売却テスト中（本当に売れるか見積もりを取る・注文は出さない）…", sym, mint, agent="exec",
@@ -415,7 +430,8 @@ class Desk:
         why["sell"] = sc["reason"]
         price = S.pair_price(pair)
         fill, slip = P.paper_buy(self.s, mint, sym, rk["size"], price, rg["facts"]["liq"],
-                                 f"点数{score}・{A.TIER_JA[tier]}", now, tier=tier, gap=rk.get("gap"))
+                                 f"点数{score}・{A.TIER_JA[tier]}" + (f"・損切り-{sl * 100:.0f}%" if sl else ""),
+                                 now, tier=tier, gap=rk.get("gap"), sl=sl)
         cand["status"] = "bought"
         cand.pop("reentry", None)
         cand.pop("pb", None)

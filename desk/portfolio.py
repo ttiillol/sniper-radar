@@ -119,13 +119,15 @@ def worst_case_open(s):
     return sum(p["cost"] * p.get("gap", C.WORST_CASE_GAP) for p in s["positions"].values())
 
 
-def paper_buy(s, mint, symbol, usd, price, liq, reason, ts=None, tier="normal", gap=None):
+def paper_buy(s, mint, symbol, usd, price, liq, reason, ts=None, tier="normal", gap=None, sl=None):
     slip = slippage(usd, liq)
     fill = price * (1 + slip) * (1 + C.FEE_PCT)
     s["cash"] -= usd
     s["positions"][mint] = {"symbol": symbol, "cost": usd, "qty": usd / fill, "entry": fill,
                             "peak": fill, "opened": int(ts or time.time()), "half_sold": False,
                             "liq": liq, "tier": tier, "gap": gap if gap is not None else C.WORST_CASE_GAP}
+    if sl:
+        s["positions"][mint]["sl"] = sl
     s["stats"]["bought"] += 1
     log_trade(mint, symbol, "BUY", usd, fill, slip, 0.0, reason)
     return fill, slip

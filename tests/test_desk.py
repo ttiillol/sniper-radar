@@ -963,7 +963,7 @@ def test_one_minute_candles_score_strictly():
     assert T.refine(s, lambda pool, a, b, mint: got.append(mint) or both, now=t0 + T.TRACK_HOURS * 3600 + 200) == 1
     o = s["outcomes"][0]
     assert got == ["M"], "the coin's own price is requested"
-    assert o["fine"] and o["sims"]["S_勢いスキャル(旧)"] < -0.06 and "T_高速スキャル(採用中)" in o["sims"]
+    assert o["fine"] and o["sims"]["S_勢いスキャル(旧)"] < -0.06 and "T_高速(-8%固定)" in o["sims"]
 
 
 def test_ohlcv_real_shape(monkeypatch):
@@ -1278,3 +1278,47 @@ def test_turbo_exit_profile_rules():
     assert E.step(st, 0.98, 11 * 60, p)[0] == 1             # below entry after 10 min -> out
     st = {"entry": 1.0, "peak": 1.0, "opened": 0}
     assert E.step(st, 1.02, 31 * 60, p)[0] == 1             # 30-minute cap
+
+
+def _candles(swing, n=20, price=1.0):
+    return [[NOW - 60 * (n - i), price, price * (1 + swing / 2), price * (1 - swing / 2), price] for i in range(n)]
+
+
+def test_adaptive_stop_follows_the_coins_swing():
+    sl, sw, why = A.adaptive_stop(_candles(0.02))          # calm coin: 2% a minute -> 5% -> floor 8%
+    assert sl == pytest.approx(0.08) and sw == pytest.approx(0.02)
+    sl, _, why = A.adaptive_stop(_candles(0.064))          # JIMMY-like: 6.4% a minute -> 16%
+    assert sl == pytest.approx(0.16) and "16%" in why
+    assert A.adaptive_stop(_candles(0.2))[0] == pytest.approx(0.20)       # capped at 20%
+    assert A.adaptive_stop(None)[0] == pytest.approx(0.08)                # no data -> standard stop
+    assert A.adaptive_stop(_candles(0.05, n=3))[0] == pytest.approx(0.08)
+    # a wider stop buys less: the dollars lost at the stop stay the same
+    assert A.stop_size(50, 0.16) * 0.16 == pytest.approx(50 * 0.08)
+    assert A.stop_size(50, 0.08) == pytest.approx(50)
+
+
+@pytest.mark.turbo
+def test_wide_stop_holds_through_a_15pct_dip_and_rebound():
+    pos = {"entry": 1.0, "peak": 1.0, "opened": NOW, "sl": 0.18}
+    assert A.exit_decision(pos, 0.85, 100_000, NOW + 60)[0] == 0          # -15%: a fixed -8% would have sold
+    assert A.exit_decision(pos, 1.03, 100_000, NOW + 300)[0] == 0
+    pos2 = {"entry": 1.0, "peak": 1.0, "opened": NOW, "sl": 0.18}
+    f, why = A.exit_decision(pos2, 0.81, 100_000, NOW + 60)
+    assert f == 1 and "損切り" in why                                     # -19% is past its own stop
+    pos3 = {"entry": 1.0, "peak": 1.0, "opened": NOW}                      # old positions: profile stop -8%
+    assert A.exit_decision(pos3, 0.91, 100_000, NOW + 60)[0] == 1
+
+
+@pytest.mark.turbo
+@pytest.mark.adaptive
+def test_desk_buys_smaller_with_a_wide_stop(monkeypatch):
+    d, s, _ = _flow_desk(monkeypatch, {"v": [_tr(NOW - 20, "buy", 100, f"b{i}") for i in range(20)]})
+    d.candles = lambda pool, a, b, mint=None: _candles(0.064)
+    p = dict(pair(), pairAddress="POOL", priceChange={"m5": 3, "h1": 10})
+    assert d.evaluate("M", p, {"bots": set(), "tokens": {}}, NOW) == "bought"
+    pos = s["positions"]["M"]
+    assert pos["sl"] == pytest.approx(0.16)
+    base = pos["cost"] * pos["sl"] / 0.08                                  # size before the stop shrink
+    assert base == pytest.approx(50) or base == pytest.approx(80)         # normal 5% or strong 8% of $1,000
+    assert pos["cost"] == pytest.approx(base / 2)                         # 16% stop -> half the money
+    assert pos["gap"] >= 0.21

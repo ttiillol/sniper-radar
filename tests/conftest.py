@@ -7,6 +7,7 @@ import pytest
 
 def pytest_configure(config):
     config.addinivalue_line("markers", "turbo: run with the TURBO settings instead of the runner-era values")
+    config.addinivalue_line("markers", "adaptive: run with the adaptive stop switched on")
 
 
 @pytest.fixture(autouse=True)
@@ -16,3 +17,5 @@ def _settings(request, monkeypatch):
     use = C.TURBO_SETTINGS if request.node.get_closest_marker("turbo") else C.BASE_SETTINGS
     for k, v in use.items():
         monkeypatch.setattr(C, k, v)
+    # adaptive stop fetches real candles: off unless a test asks for it
+    monkeypatch.setattr(C, "ADAPTIVE_STOP", bool(request.node.get_closest_marker("adaptive")))
