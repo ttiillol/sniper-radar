@@ -160,11 +160,13 @@ def score(f):
     return {"ok": True, "score": max(0, min(100, sc)), "reasons": why}
 
 
-def ohlcv(pool, t_from, t_to):
-    """1-minute candles [[ts, open, high, low, close], ...] (oldest first) between t_from and t_to."""
+def ohlcv(pool, t_from, t_to, token=None):
+    """1-minute candles [[ts, open, high, low, close], ...] (oldest first) between t_from and t_to.
+    token = the coin's mint: without it GeckoTerminal may return the pool's OTHER token (e.g. SOL)."""
     if not pool:
         return None
-    d = _gt(f"/pools/{pool}/ohlcv/minute?aggregate=1&limit=1000&currency=usd&before_timestamp={int(t_to)}")
+    tk = f"&token={token}" if token else ""
+    d = _gt(f"/pools/{pool}/ohlcv/minute?aggregate=1&limit=1000&currency=usd&before_timestamp={int(t_to)}{tk}")
     try:
         rows = d["data"]["attributes"]["ohlcv_list"]
     except (TypeError, KeyError):

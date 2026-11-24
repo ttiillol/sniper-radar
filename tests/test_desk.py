@@ -36,6 +36,11 @@ def sniper(monkeypatch):
 
 
 @pytest.fixture
+def profile_s(monkeypatch):
+    monkeypatch.setattr(C, "EXIT_PROFILE", C.EXIT_PROFILE_S)
+
+
+@pytest.fixture
 def profile_e(monkeypatch):
     monkeypatch.setattr(C, "EXIT_PROFILE", C.EXIT_PROFILE_E)
 
@@ -499,10 +504,12 @@ def test_exit_profiles_differ_on_same_path():
     a = T.simulate_profile(path, T.PROFILES["A_旧ルール(-6%)"])
     b = T.simulate_profile(path, T.PROFILES["B_業界標準(-35%,2倍で半分)"])
     e = T.simulate_profile(path, T.PROFILES["E_ハイブリッド(旧)"])
-    sc = T.simulate_profile(path, T.PROFILES["S_勢いスキャル(採用中)"])
+    sc = T.simulate_profile(path, T.PROFILES["S_勢いスキャル(旧)"])
+    r = T.simulate_profile(path, T.PROFILES["R_ランナー(採用中)"])
     assert a < 0 < b and e > 0, (a, b, e)
     assert sc < 0, "the scalp's shallow stop gives up a dip-then-runner (its known trade-off)"
-    assert sc == pytest.approx(T.simulate(path)), "S is the live profile"
+    assert r > 0.5, "the runner survives a -10% dip and rides the move"
+    assert r == pytest.approx(T.simulate(path)), "R is the live profile"
 
 
 
@@ -896,7 +903,7 @@ def test_scalp_reenters_after_cooldown_up_to_three_times_a_day(monkeypatch):
     for i in range(3):
         d.cycle(t)
         assert "M" in s["positions"], i
-        st["pair"] = dict(st["pair"], priceUsd=str(0.001 * 0.90))            # -10% -> stop
+        st["pair"] = dict(st["pair"], priceUsd=str(0.001 * 0.85))            # -15% -> stop
         d.cycle(t + 30)
         assert "M" not in s["positions"]
         c = s["candidates"]["M"]
@@ -907,7 +914,7 @@ def test_scalp_reenters_after_cooldown_up_to_three_times_a_day(monkeypatch):
     assert s["candidates"]["M"]["status"] != "waiting" and s["stats"]["bought"] == 3
 
 
-def test_exit_profile_s_rules():
+def test_exit_profile_s_rules(profile_s):
     def pos():
         return {"entry": 1.0, "peak": 1.0, "opened": NOW, "qty": 10, "cost": 10, "symbol": "X"}
     p = pos()
@@ -934,12 +941,14 @@ def test_one_minute_candles_score_strictly():
     t0 = NOW
     # one candle touches both +12% (take profit) and -7% (stop): the stop must win
     both = [[t0 + 60, 1.0, 1.12, 0.93, 1.05], [t0 + 120, 1.05, 1.06, 1.0, 1.02], [t0 + 180, 1.02, 1.03, 1.0, 1.01]]
-    assert T.simulate(T.candle_path(t0, 1.0, both)) < -0.06
+    assert T.simulate_profile(T.candle_path(t0, 1.0, both), C.EXIT_PROFILE_S) < -0.06
     s = {"outcomes": [{"t0": t0, "p0": 1.0, "pool": "P", "sim": 0.5, "max_up": 0, "max_down": 0, "end": 0,
-                       "decision": "BUY", "reasons": [], "liq": 1, "score": 1, "sims": {}}]}
-    assert T.refine(s, lambda pool, a, b: both, now=t0 + T.TRACK_HOURS * 3600 + 200) == 1
+                       "decision": "BUY", "reasons": [], "liq": 1, "score": 1, "sims": {}, "mint": "M"}]}
+    got = []
+    assert T.refine(s, lambda pool, a, b, mint: got.append(mint) or both, now=t0 + T.TRACK_HOURS * 3600 + 200) == 1
     o = s["outcomes"][0]
-    assert o["fine"] and o["sim"] < -0.06 and "S_勢いスキャル(採用中)" in o["sims"]
+    assert got == ["M"], "the coin's own price is requested"
+    assert o["fine"] and o["sims"]["S_勢いスキャル(旧)"] < -0.06 and "R_ランナー(採用中)" in o["sims"]
 
 
 def test_ohlcv_real_shape(monkeypatch):
@@ -1138,3 +1147,41 @@ def test_wallet_watch_never_raises():
     s = {}
     assert W.poll(s, {"ANS": {"tier": "W", "name": "A"}}, boom, NOW) == []
     assert s["wwatch"]["ANS"]["error"] == "RuntimeError"
+
+
+# ------------------------------------------------------------------ exit profile R (runner, live since 2026-11-23 evening)
+def test_exit_profile_r_rules():
+    def pos():
+        return {"entry": 1.0, "peak": 1.0, "opened": NOW, "qty": 10, "cost": 10, "symbol": "X"}
+    p = pos()
+    assert A.exit_decision(p, 0.91, 80_000, NOW + 60)[0] == 0                   # -9% noise: still holding
+    assert A.exit_decision(p, 0.875, 80_000, NOW + 90)[0] == 1.0               # -12.5%: stop
+    p = pos()                                                                    # +18% then -10% from peak -> keep the win
+    A.exit_decision(p, 1.18, 80_000, NOW + 60)
+    frac, why = A.exit_decision(p, 1.18 * 0.895, 80_000, NOW + 120)
+    assert frac == 1.0 and "トレーリング" in why
+    p = pos()                                                                    # +25% -> 1/3, then can't lose
+    assert A.exit_decision(p, 1.25, 80_000, NOW + 60)[0] == pytest.approx(1 / 3)
+    assert A.exit_decision(p, 1.05, 80_000, NOW + 120)[0] == 0
+    assert A.exit_decision(p, 1.019, 80_000, NOW + 180)[0] == 1.0             # floor: sell what's left
+    p = pos()                                                                    # a big run: 1/3 at +25%, 1/3 at +100%, rest rides
+    A.exit_decision(p, 1.25, 80_000, NOW + 60)
+    assert A.exit_decision(p, 2.0, 80_000, NOW + 600)[0] == pytest.approx(0.5)  # 1/3 of the start = half of what's left
+    assert A.exit_decision(p, 3.0, 80_000, NOW + 1200)[0] == 0
+    assert A.exit_decision(p, 2.2, 80_000, NOW + 1500)[0] == 0                 # -27% from the 3x peak: still in
+    assert A.exit_decision(p, 2.09, 80_000, NOW + 1600)[0] == 1.0
+    p = pos()
+    assert A.exit_decision(p, 0.97, 80_000, NOW + 59 * 60)[0] == 0
+    assert A.exit_decision(p, 0.97, 80_000, NOW + 60 * 60)[0] == 1.0          # below entry after 60 minutes
+    assert A.exit_decision(pos(), 1.10, 80_000, NOW + 6 * 3600)[0] == 1.0     # 6-hour limit
+
+
+def test_refine_rejects_the_wrong_tokens_price_and_repairs_old_records():
+    from desk import tracker as T
+    t0 = NOW
+    sol_price = [[t0 + 60 * i, 140.0, 141.0, 139.0, 140.5] for i in range(1, 5)]     # SOL in USD, not the coin
+    o = {"t0": t0, "p0": 0.00002, "pool": "P", "mint": "M", "sim": 0.1, "max_up": 9000.0, "max_down": 0, "end": 0,
+         "decision": "BUY", "reasons": [], "liq": 1, "score": 1, "sims": {"A": 9000.0}, "fine": True}
+    s = {"outcomes": [o]}
+    T.refine(s, lambda pool, a, b, mint: sol_price, now=t0 + T.TRACK_HOURS * 3600 + 200)
+    assert o["fixed"] and not o["fine"] and o["fine_try"] == 1 and o["sims"] == {"A": 9000.0}

@@ -13,7 +13,7 @@ import time
 
 from . import config as C
 
-TRACK_HOURS = 3                 # long enough for the 24h moonbag to matter a bit
+TRACK_HOURS = 6                 # long enough for the 24h moonbag to matter a bit
 SAMPLE_SEC = 300
 MAX_TRACKED = 400
 MAX_OUTCOMES = 3000
@@ -33,7 +33,8 @@ PROFILES = {
     # from the 12-agent Grok desk post: TP ladder at 2x and 3x, -12% stop, 25% trail
     "F_2倍3倍利確(-12%)": {"sl": -0.12, "tps": [(1.0, 1 / 3), (2.0, 1 / 3)], "be": None, "arm": 0.25,
                           "trail": 0.25, "stale_min": None, "max_min": 1440},
-    "S_勢いスキャル(採用中)": C.EXIT_PROFILE,
+    "S_勢いスキャル(旧)": C.EXIT_PROFILE_S,
+    "R_ランナー(採用中)": C.EXIT_PROFILE,
 }
 FEATURES = ("holders", "sniper_hold_pct", "bundle_hold_pct", "insider_pct", "top3_pct", "top10_pct",
             "creator_prev", "creator_dead", "dev_pct", "liq", "kol_n")
@@ -174,6 +175,9 @@ def refine(state, fetch, limit=2, now=None):
     The 5-minute samples miss quick spikes and dips, which decide a scalp."""
     now = now or time.time()
     done = 0
+    for o in state.get("outcomes", []):          # repair: re-score coins hit by the old wrong-token bug
+        if o.get("fine") and (o.get("max_up") or 0) > 20 and not o.get("fixed"):
+            o.update(fine=False, fine_try=0, fixed=True)
     for o in reversed(state.get("outcomes", [])):
         if done >= limit:
             break
@@ -184,9 +188,11 @@ def refine(state, fetch, limit=2, now=None):
             continue
         done += 1
         try:
-            candles = fetch(o["pool"], o["t0"] - 60, end)
+            candles = fetch(o["pool"], o["t0"] - 60, end, o.get("mint"))
         except Exception:
             candles = None
+        if candles and not 0.2 <= candles[0][4] / o["p0"] <= 5:
+            candles = None                       # wrong token's price (e.g. SOL instead of the coin): don't use
         if not candles or len(candles) < 3:
             o["fine_try"] = o.get("fine_try", 0) + 1
             continue

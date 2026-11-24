@@ -58,8 +58,16 @@ STRATEGY = "scalp"
 #   stop -6% / once +6% was reached, sell everything on a 4% pullback from the peak (locks small wins)
 #   +10%: sell half; the rest can no longer lose (floor = entry +1%); from +15% trail 6% from the peak
 #   below entry after 20 minutes -> out; never hold longer than 45 minutes
-EXIT_PROFILE = {"sl": -0.06, "arm0": 0.06, "trail0": 0.04, "tps": [(0.10, 0.5)], "be": 0.01,
-                "arm": 0.15, "trail": 0.06, "stale_min": 20, "max_min": 45}
+EXIT_PROFILE_S = {"sl": -0.06, "arm0": 0.06, "trail0": 0.04, "tps": [(0.10, 0.5)], "be": 0.01,
+                  "arm": 0.15, "trail": 0.06, "stale_min": 20, "max_min": 45}
+# Live exit profile "R: runner" (2026-11-23 evening, owner: "let winners run"). Day-1 data with S:
+# 15 trades, win 20%, PF 0.21; 8 of 12 losses were stopped within 0-3 minutes by normal noise.
+#   stop -12% / from +15%: sell all on a 10% pullback (keeps small wins)
+#   +25%: sell 1/3, the rest can't lose (floor entry +2%) / from +40%: trail 20% from the peak
+#   +100%: sell another 1/3 / last third: trail 30% from the peak (room for big runs)
+#   below entry after 60 minutes -> out; never hold longer than 6 hours
+EXIT_PROFILE = {"sl": -0.12, "arm0": 0.15, "trail0": 0.10, "tps": [(0.25, 1 / 3), (1.0, 1 / 3)], "be": 0.02,
+                "arm1": 0.40, "trail1": 0.20, "arm": 1.0, "trail": 0.30, "stale_min": 60, "max_min": 360}
 SCALP_MIN_M5 = 1.0                  # price change over the last 5 minutes must be at least +1%...
 SCALP_MAX_M5 = 8.0                  # ...but not a spike (no chasing; was 25%, two fast stop-outs on day 1)
 SCALP_MIN_H1 = 0.0                  # and the last hour must be up (trend)
