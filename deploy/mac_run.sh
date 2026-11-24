@@ -60,6 +60,29 @@ if [ -x bin/cloudflared ]; then
   TP=$!
 fi
 
+# Auto-update: every 5 minutes look at GitHub; if the PROGRAM files on main changed (not just data),
+# tell the phone and stop -> launchd starts this script again, which takes the new version.
+# Never within 30 minutes of a start (Cloudflare refuses tunnels when we restart too often).
+code_id() { git ls-tree "$1" scanner.py build_page.py desk tests deploy requirements.txt 2>/dev/null | git hash-object --stdin; }
+STARTED=$(date +%s)
+RUNNING=$(code_id HEAD)
+git fetch -q origin 2>/dev/null && RUNNING=$(code_id origin/main)
+(
+  while kill -0 $D 2>/dev/null; do
+    sleep 300
+    [ $(( $(date +%s) - STARTED )) -lt 1800 ] && continue
+    git fetch -q origin 2>/dev/null || continue
+    NEW=$(code_id origin/main)
+    if [ -n "$NEW" ] && [ "$NEW" != "$RUNNING" ]; then
+      notify "新しい版を見つけました" "GitHubに新しいプログラムがあるので、自動で再起動して取り込みます（1〜2分。ダッシュボードのアドレスが変わります）" ""
+      kill $R $D 2>/dev/null
+      break
+    fi
+  done
+) &
+UP=$!
+
 wait $R $D
+kill $UP 2>/dev/null
 kill $H $TP 2>/dev/null
 pkill -f 'cloudflared tunnel --no-autoupdate --url http://127.0.0.1:8787' 2>/dev/null
