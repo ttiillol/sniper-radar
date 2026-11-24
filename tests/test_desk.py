@@ -140,7 +140,22 @@ def test_worst_case_gap_budget():
     s["daily"][P.hst_day(NOW)] = -60.0         # $40 room left today
     s["positions"]["a"] = {"cost": 100.0}       # worst case -$25 already reserved
     r = A.risk(s, pair(), NOW)                  # new $100 position worst case -$25 > $15 room
+    assert r["ok"] and r["size"] == pytest.approx(15 / C.WORST_CASE_GAP), "shrinks to fit the room"
+    s["daily"][P.hst_day(NOW)] = -72.0          # $3 room left -> $12 trade would be below the minimum
+    r = A.risk(s, pair(), NOW)
     assert not r["ok"] and "最大損失" in r["reasons"][0]
+
+
+def test_real_case_2026_11_23_day_loss_88():
+    """11-23: day loss -$88.64 of the -$100 limit made EVERY buy fail the risk check for hours."""
+    s = P.new_state()
+    s["cash"] = 911.36
+    s["realized"] = -88.64
+    s["daily"][P.hst_day(NOW)] = -88.64
+    r = A.risk(s, pair(), NOW)
+    assert r["ok"], r["reasons"]
+    assert r["size"] * C.WORST_CASE_GAP <= 100 - 88.64 + 1e-9
+    assert r["size"] >= C.MIN_TRADE_USD
 
 
 def test_kill_file_blocks_buys():
@@ -1185,3 +1200,33 @@ def test_refine_rejects_the_wrong_tokens_price_and_repairs_old_records():
     s = {"outcomes": [o]}
     T.refine(s, lambda pool, a, b, mint: sol_price, now=t0 + T.TRACK_HOURS * 3600 + 200)
     assert o["fixed"] and not o["fine"] and o["fine_try"] == 1 and o["sims"] == {"A": 9000.0}
+
+
+def test_missing_data_is_retried_not_banned(monkeypatch):
+    """A rate-limited data source is not a dangerous coin: fetch again in a minute (3x), no 6-hour ban."""
+    from desk import notify as N
+    monkeypatch.setattr(N, "send_async", lambda *a, **k: None)
+    s = P.new_state()
+    s["candidates"]["M"] = {"seen": NOW - 1800, "grad": None, "symbol": "M", "status": "waiting", "checks": 0}
+    calls = []
+    def rug(mint, p, st, radar, now):
+        calls.append(now)
+        return {"ok": False, "reasons": ["データ不足: オンチェーン情報が取れない（rate_limited）",
+                                         "データ不足: 開発者の保有率が不明"], "facts": {}}
+    d = M.Desk(state=s, fetch_pairs=lambda ms: {m: pair() for m in ms}, rug=rug)
+    radar = {"bots": set(), "tokens": {}}
+    c = s["candidates"]["M"]
+    for i in range(C.DATA_RETRY_MAX):
+        assert d.evaluate("M", pair(), radar, NOW + i * 60) == "watch"
+        assert c["status"] == "waiting" and "hard_until" not in c
+    assert d.evaluate("M", pair(), radar, NOW + 999) == "rejected"     # still no data after 3 tries
+    assert c["status"] == "rejected"
+
+
+def test_real_danger_is_still_rejected_at_once(monkeypatch):
+    s = P.new_state()
+    s["candidates"]["M"] = {"seen": NOW - 1800, "grad": None, "symbol": "M", "status": "waiting", "checks": 0}
+    rug = lambda *a: {"ok": False, "reasons": ["mint権限が放棄されていない", "データ不足: LPロック率が不明"], "facts": {}}
+    d = M.Desk(state=s, fetch_pairs=lambda ms: {m: pair() for m in ms}, rug=rug)
+    assert d.evaluate("M", pair(), {"bots": set(), "tokens": {}}, NOW) == "rejected"
+    assert s["candidates"]["M"]["hard_until"] > NOW

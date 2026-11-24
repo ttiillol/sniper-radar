@@ -271,6 +271,17 @@ class Desk:
         price0 = S.pair_price(pair) if pair else None
 
         def reject(stage, reasons, score=None, **extra):
+            if stage == "Rug" and reasons and all(r.startswith("データ不足") for r in reasons) \
+                    and cand.get("data_retries", 0) < C.DATA_RETRY_MAX:
+                # only "couldn't fetch the data" (rate limit / RPC hiccup): not a dangerous coin -> fetch again soon
+                cand["data_retries"] = cand.get("data_retries", 0) + 1
+                cand["next_check"] = now + C.DATA_RETRY_SEC
+                st = self.s["stats"].setdefault("data_retry", 0)
+                self.s["stats"]["data_retry"] = st + 1
+                L.step("wait", f"データが取れず（{reasons[0][:30]}）— {C.DATA_RETRY_SEC}秒後に取り直し"
+                       f"（{cand['data_retries']}/{C.DATA_RETRY_MAX}回目）", sym, mint, "WAIT", agent="rug",
+                       note=f"{sym} データ取り直し待ち")
+                return "watch"
             cand["status"] = "rejected"
             if stage in ("Rug", "Flow", "Sell"):
                 cand["hard_until"] = int(now) + 6 * 3600     # don't re-examine a dangerous coin for 6 hours

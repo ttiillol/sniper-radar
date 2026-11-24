@@ -439,10 +439,19 @@ def risk(state, pair, now=None, tier="normal"):
     worst_new = size * gap
     room_day = C.DAILY_LOSS_LIMIT + dpl - P.worst_case_open(state)
     room_total = C.TOTAL_LOSS_LIMIT + state["realized"] - P.worst_case_open(state)
-    if worst_new > room_day or worst_new > room_total:
-        return V(False, reasons=[f"急落時の最大損失 ${worst_new:.2f} が残りの損失枠を超える"])
-    return V(True, reasons=[f"${size:.2f}で可（{TIER_JA[tier]}・スリッページ {slip*100:.2f}%）"], size=size, slip=slip,
-             tier=tier, gap=gap)
+    room = min(room_day, room_total)
+    shrunk = ""
+    if worst_new > room:
+        # shrink the trade so its worst case still fits the loss room (the daily/total limits still hold)
+        fit = room / gap if room > 0 else 0.0
+        if tier != "normal" or fit < C.MIN_TRADE_USD:          # big tiers fall back to normal size instead
+            return V(False, reasons=[f"急落時の最大損失 ${worst_new:.2f} が残りの損失枠 ${max(room, 0):.2f} を超える"
+                                     f"（${C.MIN_TRADE_USD:.0f}未満に縮めないと収まらない）"])
+        size = fit
+        slip = P.slippage(size, liq)
+        shrunk = f"・損失枠の残り${room:.2f}に合わせて縮小"
+    return V(True, reasons=[f"${size:.2f}で可（{TIER_JA[tier]}・スリッページ {slip*100:.2f}%{shrunk}）"], size=size,
+             slip=slip, tier=tier, gap=gap)
 
 
 # ============================================================ 6. Exit
