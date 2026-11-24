@@ -8,6 +8,7 @@ import pytest
 def pytest_configure(config):
     config.addinivalue_line("markers", "turbo: run with the TURBO settings instead of the runner-era values")
     config.addinivalue_line("markers", "adaptive: run with the adaptive stop switched on")
+    config.addinivalue_line("markers", "quality: run with the quality gate and losing-streak brake switched on")
 
 
 @pytest.fixture(autouse=True)
@@ -19,3 +20,4 @@ def _settings(request, monkeypatch):
         monkeypatch.setattr(C, k, v)
     # adaptive stop fetches real candles: off unless a test asks for it
     monkeypatch.setattr(C, "ADAPTIVE_STOP", bool(request.node.get_closest_marker("adaptive")))
+    monkeypatch.setattr(C, "QUALITY_ON", bool(request.node.get_closest_marker("quality")))

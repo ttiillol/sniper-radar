@@ -145,7 +145,11 @@ def paper_sell(s, mint, fraction, price, reason, ts=None):
     s["realized"] += pnl
     d = hst_day(ts)
     s["daily"][d] = s["daily"].get(d, 0.0) + pnl
+    p["pnl_sum"] = p.get("pnl_sum", 0.0) + pnl
     if fraction >= 0.999:
+        res = s.setdefault("results", [])            # one row per finished trade: [time, total pnl]
+        res.append([int(ts or time.time()), round(p["pnl_sum"], 4)])
+        del res[:-50]
         del s["positions"][mint]
     else:
         p["qty"] -= qty

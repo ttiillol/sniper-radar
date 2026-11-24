@@ -411,6 +411,10 @@ def risk(state, pair, now=None, tier="normal"):
         return V(False, reasons=[f"停止中: {state['halted']}"])
     if C.KILL_FILE.exists():
         return V(False, reasons=["停止ファイル data/KILL があるため新規購入なし"])
+    if C.QUALITY_ON:
+        paused, why = loss_streak(state, now)
+        if paused:
+            return V(False, reasons=[why])
     if len(state["positions"]) >= C.MAX_OPEN_POSITIONS:
         return V(False, reasons=[f"保有が上限の{C.MAX_OPEN_POSITIONS}件"])
     dpl = P.day_pnl(state, now)
@@ -452,6 +456,81 @@ def risk(state, pair, now=None, tier="normal"):
         shrunk = f"・損失枠の残り${room:.2f}に合わせて縮小"
     return V(True, reasons=[f"${size:.2f}で可（{TIER_JA[tier]}・スリッページ {slip*100:.2f}%{shrunk}）"], size=size,
              slip=slip, tier=tier, gap=gap)
+
+
+# ============================================================ 4c. Quality (win-rate gate)
+def quality(candles, trades, now, price):
+    """QUALITY agent: is this a good moment to buy, not just a moving coin?
+    Returns V(ok, reasons, facts). Missing candles/trades skip those checks (noted, never a fail)."""
+    fails, notes, facts = [], [], {}
+    rows = [r for r in (candles or []) if r[4] and r[2] >= r[3] > 0]
+    swing = None
+    if len(rows) >= 5:
+        last = rows[-C.ATR_CANDLES:]
+        swing = sum((h - l) / c for _, _, h, l, c in last) / len(last)
+        # 1) stretch vs the volume-weighted average of the last 15 minutes (volume ~ range when no volume column)
+        win = [r for r in rows if r[0] >= now - C.Q_VWAP_MIN * 60] or rows[-C.Q_VWAP_MIN:]
+        typ = [(h + l + c) / 3 for _, _, h, l, c in win]
+        vwap = sum(typ) / len(typ)
+        ext = (price or rows[-1][4]) / vwap - 1
+        lim = min(C.Q_MAX_EXT_CAP, max(C.Q_MAX_EXT, C.Q_EXT_SWING_MULT * swing))
+        facts["ext"], facts["swing"] = round(ext, 4), round(swing, 4)
+        if ext > lim:
+            fails.append(f"伸びすぎ（15分平均より+{ext * 100:.1f}%、上限+{lim * 100:.0f}%）")
+        # 2) uptrend shape
+        st = rows[-C.Q_STRUCT_CANDLES:]
+        ups = sum(1 for a, b in zip(st, st[1:]) if b[3] >= a[3])
+        facts["higher_lows"] = ups
+        if ups < len(st) - 2:
+            fails.append(f"上昇の形になっていない（直近{len(st) - 1}本で安値の切り上げ{ups}回）")
+        _, o, h, l, c = rows[-1]
+        rng = h - l
+        wick = (h - max(o, c)) / rng if rng > 0 else 0
+        facts["wick"] = round(wick, 2)
+        if wick >= C.Q_MAX_WICK and rng / c > 0.01:
+            fails.append(f"最新の1分足に長い上ヒゲ（上で売られている・{wick * 100:.0f}%）")
+    else:
+        notes.append("1分足なし → 伸びすぎ・形のチェックは省略")
+    if trades:
+        recent = [x for x in trades if now - x["t"] <= C.FLOW_WINDOW_MIN * 60]
+        buys = [x for x in recent if x["kind"] == "buy"]
+        bw = {}
+        for x in buys:
+            bw[x["wallet"]] = bw.get(x["wallet"], 0.0) + x["usd"]
+        sw = {x["wallet"] for x in recent if x["kind"] == "sell"}
+        bu = sum(bw.values())
+        top = max(bw.values()) / bu if bu else 0
+        facts.update(q_buyers=len(bw), q_sellers=len(sw), top_buyer=round(top, 2))
+        # 3) real buyers
+        if len(bw) < C.Q_MIN_BUYERS:
+            fails.append(f"買い手が少ない（10分で{len(bw)}人、{C.Q_MIN_BUYERS}人以上が必要）")
+        elif len(bw) < C.Q_BUYER_SELLER_RATIO * len(sw):
+            fails.append(f"売り手のほうが多い（買い手{len(bw)}人・売り手{len(sw)}人）")
+        if bu and top > C.Q_MAX_TOP_BUYER:
+            fails.append(f"1人の財布が買いの{top * 100:.0f}%（なれ合い・1人頼みの上げ）")
+        # 4) acceleration
+        b2 = sum(x["usd"] for x in buys if now - x["t"] <= 120)
+        pace = bu / (C.FLOW_WINDOW_MIN / 2) if bu else 0
+        facts["accel"] = round(b2 / pace, 2) if pace else None
+        if pace and b2 < C.Q_ACCEL * pace:
+            fails.append(f"勢いが衰えている（直近2分の買い${b2:,.0f}・10分の平均ペース${pace:,.0f}）")
+    else:
+        notes.append("取引データなし → 買い手・加速のチェックは省略")
+    ok = not fails
+    return V(ok, 70 if ok else 0, fails or ["品質チェック合格（伸びすぎなし・上昇の形・本物の買い手・加速中）"],
+             notes=notes, facts=facts, swing=swing)
+
+
+def loss_streak(state, now):
+    """(paused?, reason). After LOSS_STREAK losing trades in a row, pause new buys for a while."""
+    res = state.get("results") or []
+    last = res[-C.LOSS_STREAK:]
+    if len(last) < C.LOSS_STREAK or any(p > 0 for _, p in last):
+        return False, ""
+    until = last[-1][0] + C.LOSS_STREAK_PAUSE_MIN * 60
+    if now < until:
+        return True, f"{C.LOSS_STREAK}連敗中 — 相場が合っていないので{int((until - now) // 60) + 1}分休む"
+    return False, ""
 
 
 # ============================================================ 6b. Adaptive stop

@@ -167,6 +167,21 @@ ATR_CANDLES = 20
 ATR_MULT = 2.5
 STOP_MIN = 0.08
 STOP_MAX = 0.20
+# QUALITY GATE (2026-11-24, owner: "build a way to win more often"). Day-1: 8 of 12 losses were bought at the
+# top of a 5-minute move and stopped within 0-3 minutes. Five extra checks between momentum and the score:
+QUALITY_ON = True
+Q_VWAP_MIN = 15                     # 1) not stretched: price vs the last 15 minutes' volume-weighted average...
+Q_MAX_EXT = 0.04                    #    ...at most +4% above it (or 1.5 x the coin's 1-minute swing if larger)
+Q_EXT_SWING_MULT = 1.5
+Q_MAX_EXT_CAP = 0.10                #    never more than +10%
+Q_STRUCT_CANDLES = 5                # 2) uptrend shape: 3 of the last 4 one-minute lows are higher than the one before
+Q_MAX_WICK = 0.5                    #    and the latest candle's upper wick is under half its range (no selling into it)
+Q_MIN_BUYERS = 15                   # 3) real buyers: 15+ different wallets bought in 10 minutes...
+Q_BUYER_SELLER_RATIO = 1.2          #    ...1.2x more buying wallets than selling wallets...
+Q_MAX_TOP_BUYER = 0.35              #    ...and no single wallet is more than 35% of the buying
+Q_ACCEL = 0.8                       # 4) still accelerating: buys in the last 2 min >= 80% of the 10-minute pace
+LOSS_STREAK = 3                     # 5) losing-streak brake: after 3 losses in a row...
+LOSS_STREAK_PAUSE_MIN = 20          #    ...no new buys for 20 minutes
 TURBO_SETTINGS = {
     "EXIT_PROFILE": EXIT_PROFILE_T,
     "SCALP_MIN_M5": 0.5,   # was +1%

@@ -38,7 +38,8 @@ PROFILES = {
     "T_高速(-8%固定)": C.EXIT_PROFILE_T,
 }
 FEATURES = ("holders", "sniper_hold_pct", "bundle_hold_pct", "insider_pct", "top3_pct", "top10_pct",
-            "creator_prev", "creator_dead", "dev_pct", "liq", "kol_n", "stop")
+            "creator_prev", "creator_dead", "dev_pct", "liq", "kol_n", "stop",
+            "ext", "swing", "higher_lows", "wick", "q_buyers", "q_sellers", "top_buyer", "accel")
 
 
 def reason_key(text):

@@ -58,8 +58,8 @@ def credits_ok(state):
     return radar_used + state["credits"].get(mk, 0) + scanner.CALLS["n"] < scanner.MONTHLY_BUDGET
 
 
-STAGE_AGENT = {"Momentum": "trend", "Rug": "rug", "Sniper": "picker", "Risk": "sizer", "Flow": "flow", "Sell": "exec", "Reentry": "whale"}
-STAGE_JA = {"Rug": "安全チェック", "Sniper": "点数", "Risk": "資金ルール", "Flow": "取引の流れ",
+STAGE_AGENT = {"Quality": "trend", "Momentum": "trend", "Rug": "rug", "Sniper": "picker", "Risk": "sizer", "Flow": "flow", "Sell": "exec", "Reentry": "whale"}
+STAGE_JA = {"Quality": "品質", "Rug": "安全チェック", "Sniper": "点数", "Risk": "資金ルール", "Flow": "取引の流れ",
             "Sell": "売却テスト", "Reentry": "再エントリー", "Momentum": "勢い"}
 
 
@@ -369,6 +369,25 @@ class Desk:
                     return "watch"
                 return reject("Momentum", mom["reasons"], facts=rg["facts"])
             L.note("trend", f"{sym} 勢いあり（{'・'.join(mom['reasons'][:2])}）", sym, "OK")
+        cs = None
+        if C.STRATEGY == "scalp" and (C.QUALITY_ON or C.ADAPTIVE_STOP):
+            try:
+                cs = self.candles((pair or {}).get("pairAddress"), now - 40 * 60, now, mint)
+            except Exception:
+                cs = None
+        if C.STRATEGY == "scalp" and C.QUALITY_ON and not cand.get("pb_entry"):
+            L.step("work", "品質チェック中（伸びすぎ・上昇の形・本物の買い手・加速）…", sym, mint, agent="trend",
+                   note=f"{sym} の買い時を確認中…")
+            q = A.quality(cs, tr if C.FLOW_ON else None, now, S.pair_price(pair) if pair else None)
+            rg["facts"].update(q["facts"])
+            if not q["ok"]:
+                if cand["checks"] < C.SCALP_MAX_CHECKS:
+                    cand["next_check"] = now + C.SCALP_RECHECK_SEC
+                    L.step("wait", f"買い時待ち: {q['reasons'][0]}", sym, mint, "WAIT", log=False, agent="trend",
+                           note=f"{sym} {q['reasons'][0][:30]}")
+                    return "watch"
+                return reject("Quality", q["reasons"], facts=rg["facts"])
+            L.note("trend", f"{sym} 品質合格", sym, "OK")
         if cand.get("reentry") and C.STRATEGY != "scalp":
             if not fl or fl["burst_wallets"] < C.REENTRY_MIN_WHALES:
                 return reject("Reentry", [f"損切り後の再エントリー条件（大口{C.REENTRY_MIN_WHALES}人以上が2分で買う）を満たさず"],
@@ -408,10 +427,6 @@ class Desk:
             return reject("Risk", rk["reasons"], score=score, facts=rg["facts"], **why_x)
         sl, stop_why = None, ""
         if C.ADAPTIVE_STOP:
-            try:
-                cs = self.candles((pair or {}).get("pairAddress"), now - 40 * 60, now, mint)
-            except Exception:
-                cs = None
             sl, _, stop_why = A.adaptive_stop(cs)
             new_size = A.stop_size(rk["size"], sl)
             if new_size < rk["size"] - 1e-9:

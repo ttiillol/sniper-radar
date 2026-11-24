@@ -1322,3 +1322,94 @@ def test_desk_buys_smaller_with_a_wide_stop(monkeypatch):
     assert base == pytest.approx(50) or base == pytest.approx(80)         # normal 5% or strong 8% of $1,000
     assert pos["cost"] == pytest.approx(base / 2)                         # 16% stop -> half the money
     assert pos["gap"] >= 0.21
+
+
+def _rising(n=20, start=1.0, step=0.003, wick=0.0):
+    out, p = [], start
+    for i in range(n):
+        o, c = p, p * (1 + step)
+        h, l = c * (1 + wick) + 1e-12, o * (1 - 0.002)
+        out.append([NOW - 60 * (n - i), o, h, l, c])
+        p = c
+    return out
+
+
+def _buyers(n_buy=25, n_sell=8, usd=100, recent=True):
+    tr = [_tr(NOW - (30 if recent and i % 3 == 0 else 300 + i), "buy", usd, f"b{i}") for i in range(n_buy)]
+    return tr + [_tr(NOW - 200 - i, "sell", 80, f"s{i}") for i in range(n_sell)]
+
+
+def test_quality_passes_a_clean_steady_climb():
+    cs = _rising()
+    q = A.quality(cs, _buyers(), NOW, cs[-1][4])
+    assert q["ok"], q["reasons"]
+    assert q["facts"]["q_buyers"] == 25 and q["facts"]["higher_lows"] == 4
+
+
+def test_quality_blocks_chasing_a_stretched_price():
+    cs = _rising()
+    q = A.quality(cs, _buyers(), NOW, cs[-1][4] * 1.12)       # 12% above the recent average
+    assert not q["ok"] and "伸びすぎ" in q["reasons"][0]
+
+
+def test_quality_blocks_a_falling_shape_and_a_selling_wick():
+    falling = [[t, o, h, l * (1 - 0.01 * i), c] for i, (t, o, h, l, c) in enumerate(_rising())]
+    q = A.quality(falling, _buyers(), NOW, falling[-1][4])
+    assert not q["ok"] and any("上昇の形" in r for r in q["reasons"])
+    wick = _rising()
+    t, o, h, l, c = wick[-1]
+    wick[-1] = [t, o, c * 1.03, l, c]                           # long upper wick on the last candle
+    q = A.quality(wick, _buyers(), NOW, c)
+    assert not q["ok"] and any("上ヒゲ" in r for r in q["reasons"])
+
+
+def test_quality_wants_many_real_buyers_and_fresh_buying():
+    cs = _rising()
+    assert any("買い手が少ない" in r for r in A.quality(cs, _buyers(n_buy=8), NOW, cs[-1][4])["reasons"])
+    assert any("売り手のほうが多い" in r for r in A.quality(cs, _buyers(n_buy=20, n_sell=20), NOW, cs[-1][4])["reasons"])
+    one = _buyers() + [_tr(NOW - 20, "buy", 5_000, "WHALE")]
+    assert any("1人の財布" in r for r in A.quality(cs, one, NOW, cs[-1][4])["reasons"])
+    stale = _buyers(recent=False)                               # nobody bought in the last 2 minutes
+    assert any("衰えている" in r for r in A.quality(cs, stale, NOW, cs[-1][4])["reasons"])
+
+
+def test_quality_without_data_does_not_block():
+    q = A.quality(None, None, NOW, 1.0)
+    assert q["ok"] and len(q["notes"]) == 2
+
+
+@pytest.mark.quality
+def test_losing_streak_brake():
+    s = P.new_state()
+    s["results"] = [[NOW - 600, -3.0], [NOW - 300, -4.0], [NOW - 60, -2.0]]
+    r = A.risk(s, pair(), NOW)
+    assert not r["ok"] and "3連敗" in r["reasons"][0]
+    assert A.risk(s, pair(), NOW + C.LOSS_STREAK_PAUSE_MIN * 60)["ok"], "pause ends"
+    s["results"][-1][1] = 1.5                                   # a win breaks the streak
+    assert A.risk(s, pair(), NOW)["ok"]
+
+
+def test_finished_trades_are_recorded_for_the_streak():
+    s = P.new_state()
+    P.paper_buy(s, "M", "M", 50, 1.0, 1_000_000, "t", NOW)
+    P.paper_sell(s, "M", 0.5, 1.1, "half", NOW + 60)
+    assert not s.get("results")
+    P.paper_sell(s, "M", 1.0, 0.9, "rest", NOW + 120)
+    assert len(s["results"]) == 1 and s["results"][0][0] == NOW + 120
+
+
+@pytest.mark.turbo
+@pytest.mark.adaptive
+@pytest.mark.quality
+def test_desk_waits_for_a_better_moment_then_buys(monkeypatch):
+    trades = {"v": _buyers()}
+    d, s, _ = _flow_desk(monkeypatch, trades)
+    cs = _rising()
+    d.candles = lambda pool, a, b, mint=None: cs
+    p = dict(pair(price=cs[-1][4] * 1.12), pairAddress="POOL", priceChange={"m5": 3, "h1": 10})
+    assert d.evaluate("M", p, {"bots": set(), "tokens": {}}, NOW) == "watch"      # stretched -> wait
+    assert "M" not in s["positions"]
+    p = dict(pair(price=cs[-1][4]), pairAddress="POOL", priceChange={"m5": 3, "h1": 10})
+    assert d.evaluate("M", p, {"bots": set(), "tokens": {}}, NOW + 10) == "bought"
+    pos = s["positions"]["M"]
+    assert pos["sl"] == pytest.approx(0.08)                     # calm climb -> standard stop, full size
