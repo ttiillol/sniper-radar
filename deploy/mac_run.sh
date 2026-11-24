@@ -25,19 +25,41 @@ if [ ! -x bin/cloudflared ]; then
   case "$(uname -m)" in arm64) A=arm64;; *) A=amd64;; esac
   curl -fsSL "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-$A.tgz" | tar -xz -C bin 2>/dev/null
 fi
-if [ -x bin/cloudflared ]; then
-  : > data/tunnel.log
-  bin/cloudflared tunnel --no-autoupdate --url http://127.0.0.1:8787 >> data/tunnel.log 2>&1 &
-  T=$!
-  for i in $(seq 1 30); do
-    U=$(grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' data/tunnel.log | head -1)
-    [ -n "$U" ] && break; sleep 2
+notify() { ./.venv/bin/python -c "import sys; from desk import notify as N; N.send(sys.argv[1], sys.argv[2], click=(sys.argv[3] or None))" "$1" "$2" "${3:-}" 2>/dev/null; }
+# Quick tunnels get refused when they are created too often (many restarts in one day): retry with
+# growing pauses, tell the phone why, and re-create the tunnel (with a new address) if it ever drops.
+tunnel() {
+  local n=0 U T
+  while kill -0 $D 2>/dev/null && [ $n -lt 10 ]; do
+    n=$((n+1))
+    : > data/tunnel.log
+    bin/cloudflared tunnel --no-autoupdate --url http://127.0.0.1:8787 >> data/tunnel.log 2>&1 &
+    T=$!
+    U=""
+    for i in $(seq 1 45); do
+      U=$(grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' data/tunnel.log | head -1)
+      [ -n "$U" ] && break; sleep 2
+    done
+    if [ -n "$U" ]; then
+      n=0
+      echo "$U/desk.html" > data/dashboard_url.txt
+      notify "スマホ用ダッシュボード" "タップで開きます（iMacが再起動するとアドレスが変わり、新しいアドレスをまた通知します）" "$U/desk.html"
+      wait $T                                   # tunnel ended: loop and create a new one
+      notify "ダッシュボードの接続が切れました" "新しいアドレスを作り直しています（届くまで1〜2分）" ""
+    else
+      kill $T 2>/dev/null
+      WHY=$(grep -iE "429|too many|error|failed" data/tunnel.log | tail -1 | cut -c1-160)
+      notify "ダッシュボード準備中（${n}回目の失敗）" "Cloudflareの無料トンネルが作れませんでした。${n}分後に自動でやり直します。理由: ${WHY:-不明}" ""
+      sleep $((n*60))
+    fi
   done
-  if [ -n "$U" ]; then
-    echo "$U/desk.html" > data/dashboard_url.txt
-    ./.venv/bin/python -c "from desk import notify as N; N.send('スマホ用ダッシュボード', 'タップで開きます（iMacが再起動するとアドレスが変わり、新しいアドレスをまた通知します）', click='$U/desk.html')"
-  fi
+}
+if [ -x bin/cloudflared ]; then
+  pkill -f 'cloudflared tunnel --no-autoupdate --url http://127.0.0.1:8787' 2>/dev/null   # leftovers of an earlier run
+  tunnel &
+  TP=$!
 fi
 
 wait $R $D
-kill $H $T 2>/dev/null
+kill $H $TP 2>/dev/null
+pkill -f 'cloudflared tunnel --no-autoupdate --url http://127.0.0.1:8787' 2>/dev/null
