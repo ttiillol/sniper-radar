@@ -73,7 +73,8 @@ def step(st, price, now, prof):
 
     # 4) time limit
     if age_min >= prof["max_min"]:
-        return all_out(f"保有時間の上限（{prof['max_min']//60}時間、損益{g*100:+.1f}%）")
+        lim = f"{prof['max_min'] // 60}時間" if prof["max_min"] >= 60 and prof["max_min"] % 60 == 0 else f"{prof['max_min']}分"
+        return all_out(f"保有時間の上限（{lim}、損益{g*100:+.1f}%）")
     return 0.0, None
 
 

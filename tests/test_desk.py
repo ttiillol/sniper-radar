@@ -1413,3 +1413,12 @@ def test_desk_waits_for_a_better_moment_then_buys(monkeypatch):
     assert d.evaluate("M", p, {"bots": set(), "tokens": {}}, NOW + 10) == "bought"
     pos = s["positions"]["M"]
     assert pos["sl"] == pytest.approx(0.08)                     # calm climb -> standard stop, full size
+
+
+def test_time_limit_message_shows_minutes():
+    E = __import__("desk.exits", fromlist=["step"])
+    st = {"entry": 1.0, "peak": 1.0, "opened": 0}
+    f, why = E.step(st, 1.02, 31 * 60, C.EXIT_PROFILE_T)
+    assert f == 1 and "30分" in why
+    st = {"entry": 1.0, "peak": 1.0, "opened": 0}
+    assert "6時間" in E.step(st, 1.02, 361 * 60, C.EXIT_PROFILE_R)[1]

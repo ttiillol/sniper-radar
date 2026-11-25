@@ -82,7 +82,27 @@ git fetch -q origin 2>/dev/null && RUNNING=$(code_id origin/main)
 ) &
 UP=$!
 
+# Watchdog: the desk saves data/desk/state.json at the end of every cycle (every few seconds).
+# If it has not been saved for 10 minutes the desk is stuck (11-25: frozen ~14 h until the daily restart):
+# tell the phone and stop -> launchd starts everything again.
+(
+  sleep 600
+  while kill -0 $D 2>/dev/null; do
+    sleep 60
+    M=$(date -r data/desk/state.json +%s 2>/dev/null || echo 0)
+    AGE=$(( $(date +%s) - M ))
+    if [ "$M" -gt 0 ] && [ $AGE -gt 600 ]; then
+      notify "デスクが固まっていました" "$((AGE / 60))分間動きがなかったので、自動で起動し直します（1〜2分。ダッシュボードのアドレスが変わります）" ""
+      kill $R $D 2>/dev/null
+      sleep 5
+      kill -9 $R $D 2>/dev/null
+      break
+    fi
+  done
+) &
+WD=$!
+
 wait $R $D
-kill $UP 2>/dev/null
+kill $UP $WD 2>/dev/null
 kill $H $TP 2>/dev/null
 pkill -f 'cloudflared tunnel --no-autoupdate --url http://127.0.0.1:8787' 2>/dev/null
