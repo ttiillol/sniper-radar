@@ -1455,3 +1455,27 @@ def test_trend_records_cannot_crowd_out_real_ones(monkeypatch):
         T.start(s, f"T:{i}", "x", 1.0, 1, "TREND", [], None, NOW)
     T.start(s, "REAL", "x", 1.0, 1, "BUY", [], 70, NOW)
     assert sum(1 for k in s["tracking"] if k.startswith("T:")) == 2 and "REAL" in s["tracking"]
+
+
+def test_raw_outcomes_are_published_with_trending_rank(tmp_path):
+    import json as _json
+    from desk import page
+    s = P.new_state()
+    s["candidates"]["A"] = {"seen": NOW, "status": "waiting", "checks": 0, "trending": 4, "symbol": "AAA"}
+    T.start(s, "A", "AAA", 1.0, 50_000, "BUY", [], 70, NOW, pool="P")
+    T.start(s, "T:A", "AAA", 1.0, 50_000, "TREND", ["5分注目4位"], None, NOW, pool="P")
+    assert s["tracking"]["A"]["facts"]["trend_rank"] == 4
+    assert "trend_rank" not in s["tracking"]["T:A"]["facts"]
+    for k in ("A", "T:A"):
+        s["tracking"][k]["path"] += [[NOW + 300, 1.1], [NOW + 600, 1.2]]
+        T.finish(s, k)
+    s["outcomes"].append({"mint": "B", "symbol": "B", "t0": NOW, "decision": "REJECT", "score": None, "liq": 1,
+                          "reasons": [], "sim": -0.1, "max_up": 0, "max_down": -0.2, "end": -0.2, "samples": 3,
+                          "sims": {}, "facts": {}})
+    s["candidates"]["B"] = {"seen": NOW, "status": "rejected", "checks": 1, "trending": 9}
+    P.save_state(s)
+    page.build(tmp_path)
+    d = _json.loads((tmp_path / "outcomes.json").read_text())
+    by = {(o["mint"], o["decision"]): o for o in d["outcomes"]}
+    assert by[("A", "BUY")]["facts"]["trend_rank"] == 4 and by[("A", "TREND")]["sim"] is not None
+    assert by[("B", "REJECT")]["facts"]["trend_rank"] == 9              # filled in from the candidate

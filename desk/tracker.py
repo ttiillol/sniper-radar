@@ -45,7 +45,7 @@ PROFILES = {
 }
 FEATURES = ("holders", "sniper_hold_pct", "bundle_hold_pct", "insider_pct", "top3_pct", "top10_pct",
             "creator_prev", "creator_dead", "dev_pct", "liq", "kol_n", "stop",
-            "ext", "swing", "higher_lows", "wick", "q_buyers", "q_sellers", "top_buyer", "accel")
+            "ext", "swing", "higher_lows", "wick", "q_buyers", "q_sellers", "top_buyer", "accel", "trend_rank")
 
 
 def reason_key(text):
@@ -77,6 +77,9 @@ def start(state, mint, symbol, price, liq, decision, reasons=None, score=None, n
                 "liq": liq, "reasons": [reason_key(r) for r in (reasons or [])][:4],
                 "path": [[now, price]], "next": now + SAMPLE_SEC, "pool": pool,
                 "facts": {k: (facts or {}).get(k) for k in FEATURES if (facts or {}).get(k) is not None}}
+    rank = (state.get("candidates", {}).get(real_mint(mint)) or {}).get("trending")
+    if rank is not None and decision != "TREND":
+        tr[mint]["facts"].setdefault("trend_rank", rank)
 
 
 def due(state, now=None):

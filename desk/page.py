@@ -49,6 +49,18 @@ def build(site: Path):
     html = TEMPLATE.replace("__DATA__", json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
                             .replace("</", "<\\/"))
     (site / "desk.html").write_text(html, encoding="utf-8")
+    # raw verification records (one per coin) for offline analysis
+    keep = ("mint", "symbol", "t0", "decision", "score", "liq", "reasons", "sim", "max_up", "max_down", "end",
+            "samples", "sims", "facts", "fine")
+    raw = [{k: o.get(k) for k in keep} for o in s.get("outcomes", [])]
+    for o in raw:                                   # trending rank from the candidate if the record lacks it
+        f = o.get("facts") or {}
+        if f.get("trend_rank") is None and o["decision"] != "TREND":
+            r = (s["candidates"].get(o["mint"]) or {}).get("trending")
+            if r is not None:
+                o["facts"] = dict(f, trend_rank=r)
+    (site / "outcomes.json").write_text(json.dumps({"t": int(time.time()), "outcomes": raw}, ensure_ascii=False,
+                                                   separators=(",", ":")), encoding="utf-8")
 
 
 TEMPLATE = r"""<!DOCTYPE html>
