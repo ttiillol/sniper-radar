@@ -17,6 +17,12 @@ TRACK_HOURS = 6                 # long enough for the 24h moonbag to matter a bi
 SAMPLE_SEC = 300
 MAX_TRACKED = 400
 MAX_OUTCOMES = 3000
+TREND_PREFIX = "T:"             # "what if we bought every coin the moment it hit the 5-minute trending list"
+TREND_MAX_TRACKED = 120         # these never crowd out the desk's own coins
+
+
+def real_mint(key):
+    return key[len(TREND_PREFIX):] if key.startswith(TREND_PREFIX) else key
 FRICTION = 2 * C.FEE_PCT + 0.01          # fees both ways + ~1% slippage
 
 # Exit profiles compared on every tracked coin (same price path, different selling rules).
@@ -59,7 +65,12 @@ def start(state, mint, symbol, price, liq, decision, reasons=None, score=None, n
     if not price:
         return
     tr = state.setdefault("tracking", {})
-    if mint in tr or len(tr) >= MAX_TRACKED:
+    if mint in tr:
+        return
+    if mint.startswith(TREND_PREFIX):
+        if sum(1 for k in tr if k.startswith(TREND_PREFIX)) >= TREND_MAX_TRACKED:
+            return
+    elif sum(1 for k in tr if not k.startswith(TREND_PREFIX)) >= MAX_TRACKED:
         return
     now = int(now or time.time())
     tr[mint] = {"t0": now, "p0": price, "symbol": symbol, "decision": decision, "score": score,
@@ -106,7 +117,7 @@ def finish(state, mint):
     if not t or len(t["path"]) < 3:
         return
     ps = [p for _, p in t["path"]]
-    out = {"mint": mint, "symbol": t["symbol"], "t0": t["t0"], "decision": t["decision"],
+    out = {"mint": real_mint(mint), "symbol": t["symbol"], "t0": t["t0"], "decision": t["decision"],
            "score": t["score"], "liq": t["liq"], "reasons": t["reasons"],
            "sim": round(simulate(t["path"], stop=(t.get("facts") or {}).get("stop")), 4),
            "max_up": round(max(ps) / ps[0] - 1, 4), "max_down": round(min(ps) / ps[0] - 1, 4),

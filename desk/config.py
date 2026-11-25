@@ -144,7 +144,8 @@ DEV_CHECK_SEC = 60                  # while holding: check every minute whether 
 REENTRY_WAIT_SEC = 120              # after a stop-loss, look at the coin once more after 2 minutes...
 REENTRY_MIN_WHALES = 3              # ...and only re-buy if 3+ different whales bought within 2 minutes
 TRENDING_EVERY_SEC = 30
-WATCH_EVERY_SEC = 60                # named wallets (tier W) are checked every minute
+WATCH_EVERY_SEC = 60
+TREND_CHASE_TOP = 10                # verification only: pretend-buy each coin entering the 5-minute trending top 10                # named wallets (tier W) are checked every minute
 
 
 # ================================================================================================

@@ -9,6 +9,7 @@ from desk import agents as A
 from desk import config as C
 from desk import portfolio as P
 from desk import main as M
+from desk import tracker as T
 
 ROOT = Path(__file__).resolve().parent.parent
 NOW = 1_800_000_000
@@ -1422,3 +1423,35 @@ def test_time_limit_message_shows_minutes():
     assert f == 1 and "30分" in why
     st = {"entry": 1.0, "peak": 1.0, "opened": 0}
     assert "6時間" in E.step(st, 1.02, 361 * 60, C.EXIT_PROFILE_R)[1]
+
+
+def test_trend_chase_is_recorded_beside_real_buys(monkeypatch):
+    """Every coin entering the 5-minute trending top 10 gets a pretend buy; a real buy of the same coin is kept too."""
+    s = P.new_state()
+    d = M.Desk(state=s, fetch_pairs=lambda ms: {m: dict(pair(price=0.001), pairAddress="POOL") for m in ms})
+    tr = [{"mint": "A", "rank": 1, "symbol": "AAA", "dur": "5m"}, {"mint": "B", "rank": 15, "symbol": "BBB", "dur": "5m"},
+          {"mint": "C", "rank": 2, "symbol": "CCC", "dur": "1h"}]
+    assert d.trend_chase(tr, NOW) == 1                           # only A: top 10 of the 5-minute list
+    assert d.trend_chase(tr, NOW + 30) == 0                      # not twice
+    T.start(s, "A", "AAA", 0.001, 50_000, "BUY", [], 70, NOW + 60, pool="POOL")
+    assert "T:A" in s["tracking"] and "A" in s["tracking"]
+    prices = iter([0.0011, 0.0012, 0.0013, 0.0012, 0.0011])
+    for i in range(5):
+        d.fetch_pairs = lambda ms, p=next(prices): {m: pair(price=p) for m in ms}
+        for t in s["tracking"].values():
+            t["next"] = 0
+        d.follow_outcomes(NOW + 120 + i * 300)
+    assert len(s["tracking"]["T:A"]["path"]) == 6 and len(s["tracking"]["A"]["path"]) == 6
+    d.follow_outcomes(NOW + T.TRACK_HOURS * 3600 + 120)
+    outs = {o["decision"]: o for o in s["outcomes"]}
+    assert outs["TREND"]["mint"] == "A" and outs["BUY"]["mint"] == "A"
+    assert "注目を追いかけていたら 1件" in d.summary_text()
+
+
+def test_trend_records_cannot_crowd_out_real_ones(monkeypatch):
+    monkeypatch.setattr(T, "TREND_MAX_TRACKED", 2)
+    s = P.new_state()
+    for i in range(5):
+        T.start(s, f"T:{i}", "x", 1.0, 1, "TREND", [], None, NOW)
+    T.start(s, "REAL", "x", 1.0, 1, "BUY", [], 70, NOW)
+    assert sum(1 for k in s["tracking"] if k.startswith("T:")) == 2 and "REAL" in s["tracking"]

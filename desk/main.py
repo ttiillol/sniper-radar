@@ -507,6 +507,29 @@ class Desk:
         L.idle(f"ひと回り完了 — {C.TICK_SEC:.0f}秒後に次の巡回（新しい卒業コインはずっと受信中）")
         return "ok"
 
+    def trend_chase(self, trending, now=None):
+        """TREND CHASE test (verification only, nothing is bought): record a pretend buy of every coin that
+        enters the 5-minute trending top 10, at that moment's price, so it can be compared with real buys."""
+        now = now or time.time()
+        try:
+            fresh = [t for t in trending if t.get("dur") == "5m" and t["rank"] <= C.TREND_CHASE_TOP
+                     and T.TREND_PREFIX + t["mint"] not in self.s.get("tracking", {})]
+            if not fresh:
+                return 0
+            tp = self.fetch_pairs([t["mint"] for t in fresh])
+            n = 0
+            for t in fresh:
+                p = tp.get(t["mint"])
+                if p and S.pair_price(p):
+                    T.start(self.s, T.TREND_PREFIX + t["mint"], t["symbol"], S.pair_price(p),
+                            (p.get("liquidity") or {}).get("usd"), "TREND", [f"5分注目{t['rank']}位"], None, now,
+                            pool=p.get("pairAddress"))
+                    n += 1
+            return n
+        except Exception as e:
+            self._error("trend-chase", "", e)
+            return 0
+
     def follow_outcomes(self, now=None):
         """Verification engine: sample prices of every evaluated coin (free DexScreener calls)."""
         now = now or time.time()
@@ -514,8 +537,8 @@ class Desk:
         prices = {}
         if want:
             L.step("work", f"検証エンジン: 過去に審査した {len(want)}件の今の値段を記録中", log=False)
-            pairs = self.fetch_pairs(want)
-            prices = {m: S.pair_price(pairs.get(m)) if pairs.get(m) else None for m in want}
+            pairs = self.fetch_pairs(sorted({T.real_mint(m) for m in want}))
+            prices = {m: S.pair_price(pairs.get(T.real_mint(m))) if pairs.get(T.real_mint(m)) else None for m in want}
         T.update(self.s, prices, now)
         if C.FLOW_ON and now - self._last_refine >= C.REFINE_EVERY_SEC:
             self._last_refine = now
@@ -555,10 +578,16 @@ class Desk:
         except Exception:
             pass
         lines += self.shortlist()
-        outs = s.get("outcomes", [])
+        allo = s.get("outcomes", [])
+        outs = [o for o in allo if o["decision"] != "TREND"]
+        wr = lambda xs: sum(1 for o in xs if o["sim"] > 0) / len(xs) * 100
         if outs:
-            win = sum(1 for o in outs if o["sim"] > 0) / len(outs)
-            lines.append(f"検証 {len(outs)}件 ・ もし全部買っていたら勝率 {win * 100:.0f}%")
+            lines.append(f"検証 {len(outs)}件 ・ もし全部買っていたら勝率 {wr(outs):.0f}%")
+        bo = [o for o in allo if o["decision"] == "BUY"]
+        tro = [o for o in allo if o["decision"] == "TREND"]
+        if tro:
+            lines.append(f"注目を追いかけていたら {len(tro)}件 ・ 勝率 {wr(tro):.0f}% ・ 平均 {sum(o['sim'] for o in tro) / len(tro) * 100:+.1f}%"
+                         + (f"（実際に買った{len(bo)}件: 勝率 {wr(bo):.0f}% ・ 平均 {sum(o['sim'] for o in bo) / len(bo) * 100:+.1f}%）" if bo else ""))
         try:
             meta = json.loads((C.DATA / "meta.json").read_text())
             ls = meta.get("last_stats", {})
@@ -664,7 +693,8 @@ async def run_loop(minutes):
         seen = {}
         for dur in ("5m", "1h"):
             for t in F.trending_mints(duration=dur):
-                seen.setdefault(t["mint"], t)
+                seen.setdefault(t["mint"], dict(t, dur=dur))
+        desk.trend_chase(seen.values(), now)
         for t in seen.values():
             c = desk.s["candidates"].get(t["mint"])
             if c is not None:

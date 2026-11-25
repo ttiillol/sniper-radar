@@ -241,7 +241,7 @@ $("#poss").innerHTML=P.length?P.map(([m,p])=>`<div class="row"><b>${(p.symbol||"
   const tbl=(title,g,order)=>{const rows=Object.entries(g||{}).filter(([k,v])=>v).sort((a,b)=>order?order.indexOf(a[0])-order.indexOf(b[0]):b[1].n-a[1].n);
     if(!rows.length)return"";return `<div style="margin-top:10px"><b style="font-size:13px">${title}</b>`+rows.map(([k,v])=>`<div class="row" style="display:flex;gap:8px;align-items:center"><span style="flex:1">${k.replace(/</g,"")}</span>
     <span class="small">${v.n}件</span><span class="small" style="width:70px;text-align:right">勝率 ${pct(v.win)}</span><b class="${v.avg>0?"pos":"neg"}" style="width:62px;text-align:right">${v.avg>0?"+":""}${pct(v.avg)}</b></div>`).join("")+"</div>"};
-  const NMD={BUY:"買った",REJECT:"見送った",WATCH:"様子見した"};
+  const NMD={BUY:"買った",REJECT:"見送った",WATCH:"様子見した",TREND:"注目を追いかけたら"};
   const dec=Object.fromEntries(Object.entries(V.decision||{}).map(([k,v])=>[NMD[k]||k,v]));
   $("#vc").innerHTML=`<h2>検証：もし買っていたら <span class="small">（6時間追跡・9つの売り方（A〜F・S・R と採用中のT）を同じ値動きで比較・1分足で再採点）</span></h2>
   <div class="small">追跡中 ${D.tracking}件 ・ 結果が出た ${D.outcomes_n}件。見送ったコインの成績が良ければ、そのルールは厳しすぎる証拠です。</div>
